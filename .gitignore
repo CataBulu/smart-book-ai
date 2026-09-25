@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# App runtime data (SQLite + ChromaDB) and secrets
+backend/.data/
+.env
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+
+# graphify intermediates
+graphify-out/cache/
+graphify-out/cost.json
+
+# tool backups
+*.graphify-bak
