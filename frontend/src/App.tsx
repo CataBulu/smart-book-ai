@@ -3,6 +3,7 @@ import { AlertTriangle, Loader2, Menu } from 'lucide-react'
 import { api, streamChat } from './api.ts'
 import { AddBookDialog } from './components/AddBookDialog.tsx'
 import { BookDrawer } from './components/BookDrawer.tsx'
+import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog.tsx'
 import { Composer } from './components/Composer.tsx'
 import { Home } from './components/Home.tsx'
 import { LibraryView } from './components/LibraryView.tsx'
@@ -46,6 +47,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [context, setContext] = useState({ used: 0, max: 8192 })
   const [toasts, setToasts] = useState<Toast[]>([])
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null)
   const activeRef = useRef<string | null>(null)
   const abort = useRef<AbortController | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
@@ -58,6 +60,10 @@ export default function App() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'error' ? 6000 : 3500)
   }, [])
   const fail = useCallback((m: string) => toast(m, 'error'), [toast])
+
+  const ask = (title: string, message: string, confirmLabel: string) =>
+    new Promise<boolean>((resolve) => setConfirmReq({ title, message, confirmLabel, resolve }))
+  const closeConfirm = useCallback(() => setConfirmReq(null), [])
 
   const refresh = useCallback(() => {
     api.conversations().then(setConversations).catch(() => {})
@@ -195,9 +201,17 @@ export default function App() {
   }
 
   const deleteConversation = async (id: string) => {
-    if (!confirm('Delete this conversation?')) return
-    await api.deleteConversation(id).catch(() => {})
-    if (id === activeRef.current) newChat()
+    const title = conversations.find((c) => c.id === id)?.title ?? 'this conversation'
+    const ok = await ask('Delete conversation?',
+      `Are you sure you want to delete “${title}”? Its messages will be gone for good.`, 'Delete')
+    if (!ok) return
+    try {
+      await api.deleteConversation(id)
+      if (id === activeRef.current) newChat()
+      toast('Conversation deleted')
+    } catch (e) {
+      fail((e as Error).message)
+    }
     refresh()
   }
 
@@ -232,7 +246,9 @@ export default function App() {
   }
 
   const removeBook = async (book: Book) => {
-    if (!confirm(`Remove “${book.title}” from your library?`)) return
+    const ok = await ask('Remove book?',
+      `Are you sure you want to remove “${book.title}” from your library? Smart Book will stop recommending it.`, 'Remove')
+    if (!ok) return
     try {
       await api.deleteBook(book.id)
       setDrawer(null)
@@ -339,6 +355,7 @@ export default function App() {
           }}
         />
       )}
+      {confirmReq && <ConfirmDialog req={confirmReq} onDone={closeConfirm} />}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => <div key={t.id} className={`toast ${t.kind === 'error' ? 'error' : ''}`} role="status">{t.text}</div>)}
       </div>

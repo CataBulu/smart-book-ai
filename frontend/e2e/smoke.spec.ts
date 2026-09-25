@@ -108,14 +108,55 @@ test('settings: dark mode persists across reloads', async ({ page }) => {
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
 })
 
-test('conversation can be reopened and deleted', async ({ page }) => {
+test('header switch toggles day and night mode', async ({ page }) => {
+  const toggle = page.getByRole('switch', { name: 'Dark mode' })
+  const before = await page.locator('html').getAttribute('data-theme')
+  await toggle.click()
+  const after = before === 'dark' ? 'light' : 'dark'
+  await expect(page.locator('html')).toHaveAttribute('data-theme', after)
+  await expect(toggle).toHaveAttribute('aria-checked', String(after === 'dark'))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', after)
+})
+
+test('library link sits at the bottom, above the settings', async ({ page }) => {
+  const library = await page.getByRole('button', { name: /^Library/ }).boundingBox()
+  const settings = await page.getByRole('button', { name: 'Settings' }).boundingBox()
+  expect(library!.y).toBeLessThan(settings!.y)
+  expect(settings!.y - library!.y).toBeLessThan(90)
+})
+
+test('conversation delete asks for confirmation first', async ({ page }) => {
   await ask(page, 'desert planet science fiction epic')
   await page.getByRole('button', { name: 'New conversation' }).click()
-  await expect(page.locator('.mood')).toHaveCount(8)
   await page.locator('.recent-item', { hasText: 'desert planet' }).click()
   await expect(page.getByTestId('assistant-message')).toHaveCount(1)
-  page.once('dialog', (d) => d.accept())
-  await page.getByRole('button', { name: /Delete “desert planet/ }).click()
+
+  const del = page.getByRole('button', { name: /Delete “desert planet/ })
+  await del.click()
+  const confirm = page.getByRole('alertdialog', { name: 'Delete conversation?' })
+  await expect(confirm).toContainText('Are you sure you want to delete “desert planet science fiction epic”?')
+  await expect(confirm.getByRole('button', { name: 'Cancel' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(confirm).toBeHidden()
+  await expect(page.locator('.recent-item', { hasText: 'desert planet' })).toHaveCount(1)
+
+  await del.click()
+  await confirm.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByText('Conversation deleted')).toBeVisible()
   await expect(page.locator('.recent-item', { hasText: 'desert planet' })).toHaveCount(0)
   await expect(page.locator('.mood')).toHaveCount(8)
+})
+
+test('removing a book asks for confirmation', async ({ page }) => {
+  const start = await bookCount(page)
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByTestId('book-card').filter({ hasText: 'Animal Farm' }).click()
+  await page.getByRole('button', { name: 'Remove from library' }).click()
+  const confirm = page.getByRole('alertdialog', { name: 'Remove book?' })
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.getByTestId('book-count')).toHaveText(String(start))
+  await page.getByRole('button', { name: 'Remove from library' }).click()
+  await confirm.getByRole('button', { name: 'Remove', exact: true }).click()
+  await expect(page.getByTestId('book-count')).toHaveText(String(start - 1))
 })

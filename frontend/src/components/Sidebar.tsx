@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent } from 'react'
-import { Library, MessageSquarePlus, Settings, X } from 'lucide-react'
-import type { Prefs, ThemePref } from '../lib/prefs.ts'
+import { Library, MessageSquarePlus, Moon, Settings, Sun, X } from 'lucide-react'
+import { resolvedTheme, type Prefs, type ThemePref } from '../lib/prefs.ts'
 import type { ConversationSummary, ModelId, UsageSummary, Voice } from '../types.ts'
 import { HardwarePanel } from './HardwarePanel.tsx'
 import { Logo } from './Logo.tsx'
@@ -55,18 +55,23 @@ export function Sidebar(p: Props) {
     setPop((cur) => (cur === which ? null : which))
   }
   const s = p.usage?.session
+  const dark = resolvedTheme(p.prefs.theme) === 'dark'
 
   return (
     <aside className={`sidebar${p.open ? ' open' : ''}`} aria-label="Navigation">
-      <div className="wordmark"><Logo /> <b>Smart Book</b> <span>AI</span></div>
+      <div className="wordmark">
+        <Logo /> <b>Smart Book</b> <span>AI</span>
+        <button className="theme-switch" role="switch" aria-checked={dark} aria-label="Dark mode"
+                title={dark ? 'Switch to day mode' : 'Switch to night mode'}
+                onClick={() => p.onPrefs({ theme: dark ? 'light' : 'dark' })}>
+          <i className="knob">{dark ? <Moon size={11} /> : <Sun size={11} />}</i>
+        </button>
+      </div>
 
       <nav className="nav">
         <button className="nav-item" onClick={p.onNewChat} disabled={p.busy}
                 aria-current={p.view === 'chat' && !p.activeId ? 'page' : undefined}>
           <MessageSquarePlus size={17} /> New conversation
-        </button>
-        <button className="nav-item" onClick={p.onLibrary} aria-current={p.view === 'library' ? 'page' : undefined}>
-          <Library size={17} /> Library <span className="count" data-testid="book-count">{p.bookCount}</span>
         </button>
       </nav>
 
@@ -89,6 +94,9 @@ export function Sidebar(p: Props) {
         ))}
       </div>
 
+      <button className="nav-item library-link" onClick={p.onLibrary} aria-current={p.view === 'library' ? 'page' : undefined}>
+        <Library size={17} /> Library <span className="count" data-testid="book-count">{p.bookCount}</span>
+      </button>
       <div className="sidebar-foot">
         <button className="usage-btn" onClick={toggle('usage')} aria-expanded={pop === 'usage'} data-testid="usage-button">
           <b data-testid="session-cost">${(s?.cost ?? 0).toFixed(4)}</b> this session<br />
