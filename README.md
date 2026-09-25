@@ -15,9 +15,12 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
   The L2 embedding is reused for retrieval, so moderation adds no extra model call.
 - **Multi-format import**: PDF, DOCX, EPUB, Markdown/TXT, JSON (single or bulk), plus JSON export.
 - **Token & cost accounting**: every embed, rewrite, chat and tool round is recorded per session and per
-  conversation, with configurable cloud-equivalent $/1M-token rates. A context-window ring shows usage.
-- **UI**: streaming answers (SSE), grounded "From your library" source chips with match scores, model picker
-  (Pro/Lite), Listen (TTS) and dictation (browser speech APIs), light/dark blue theme, responsive layout.
+  conversation, with configurable cloud-equivalent $/1M-token rates. The usage popover also shows how full the context window is.
+- **Local image generation** (SD-Turbo on CPU): paint book covers and "Illustrate" a recommended book.
+- **Local voice**: Listen reads answers with Kokoro TTS; dictation uses Whisper STT — no audio leaves the PC.
+- **UI**: bookshop-style design (serif titles, real and typeset covers), streaming answers with book cards,
+  mood chips and a shelf on the home screen, library page with drag-and-drop import, light/dark themes, mobile layout.
+  Technical details (search query, tools, match scores, tokens, cost) sit behind a Details toggle.
 
 ## Models (picked for a GTX 1650 SUPER 4 GB / Ryzen 5 2600 / 16 GB)
 | Role | Model | Notes |
@@ -25,6 +28,8 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
 | Smart Book Pro | `qwen3.5:4b` | best answers, ~12 tok/s |
 | Smart Book Lite | `qwen3.5:2b-q4_K_M` | fully on GPU, ~78 tok/s |
 | Embeddings | `qwen3-embedding:0.6b` | runs on CPU so the chat model keeps the GPU |
+| Images | `stabilityai/sd-turbo` | CPU, 2 steps, ~20 s per image; worker process exits when idle |
+| Speech | Kokoro-82M (TTS), Whisper base.en (STT) | CPU |
 
 Measurements and reasoning: [`chunks/02-hardware-and-models.md`](chunks/02-hardware-and-models.md).
 
@@ -35,10 +40,13 @@ ollama pull qwen3.5:4b
 ollama pull qwen3.5:2b-q4_K_M
 ollama pull qwen3-embedding:0.6b
 
-# 2. Build the UI (once, or after frontend changes)
+# 2. Image + speech models (once, ~3 GB)
+cd backend && uv run python -m smartbook.media download && cd ..
+
+# 3. Build the UI (once, or after frontend changes)
 cd frontend && npm install && npm run build && cd ..
 
-# 3. Run: serves API + UI on http://127.0.0.1:8000 and seeds 60 books on first start
+# 4. Run: serves API + UI on http://127.0.0.1:8000 and seeds 60 books on first start
 cd backend && uv run smartbook
 ```
 Development with hot reload: run `uv run smartbook` in `backend/` and `npm run dev` in `frontend/`,
@@ -46,8 +54,8 @@ then open http://127.0.0.1:5173.
 
 ## Tests
 ```bash
-cd backend && uv run pytest          # 75 unit/API tests (fake LLM, no Ollama needed)
-cd frontend && npx playwright test   # 7 smoke tests (isolated fake-LLM backend on :8001)
+cd backend && uv run pytest          # 84 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 10 smoke tests (isolated fake-LLM backend on :8001)
 ```
 
 ## Configuration

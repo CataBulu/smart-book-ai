@@ -77,7 +77,8 @@ class ChatService:
             if book:  # skip index entries whose book row vanished
                 out.append({"book_id": book["id"], "title": book["title"], "author": book["author"],
                             "genres": book["genres"], "themes": book["themes"], "description": book["description"],
-                            "score": hit.score, "kind": hit.kind, "snippet": hit.snippet})
+                            "cover_url": book["cover_url"], "score": hit.score, "kind": hit.kind,
+                            "snippet": hit.snippet})
         return out
 
     @staticmethod
@@ -120,7 +121,7 @@ class ChatService:
             details = {k: book[k] for k in ("title", "author", "genres", "themes", "description")}
             source = {"book_id": book["id"], "title": book["title"], "author": book["author"],
                       "genres": book["genres"], "themes": book["themes"], "description": book["description"],
-                      "score": None, "kind": "summary", "snippet": ""}
+                      "cover_url": book["cover_url"], "score": None, "kind": "summary", "snippet": ""}
             return json.dumps(details, ensure_ascii=False), [source]
         return f"Unknown tool {name}.", []
 

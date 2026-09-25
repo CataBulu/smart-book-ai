@@ -18,6 +18,8 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${WEB_PORT}`,
     trace: 'retain-on-failure',
+    permissions: ['microphone'],
+    launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
   webServer: [

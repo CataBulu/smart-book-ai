@@ -7,12 +7,18 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "accelerate>=1.15.0",
     "chromadb>=1.5.9",
+    "diffusers>=0.40.0",
+    "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
+    "kokoro-onnx>=0.6.1",
     "pypdf>=6.19.0",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.32",
     "starlette>=1.7.0",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -32,3 +38,11 @@ dev = [
     "httpx2>=2.13.1",
     "pytest>=9.1.1",
 ]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

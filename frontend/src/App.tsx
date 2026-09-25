@@ -1,65 +1,63 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Menu } from 'lucide-react'
 import { api, streamChat } from './api.ts'
+import { AddBookDialog } from './components/AddBookDialog.tsx'
+import { BookDrawer } from './components/BookDrawer.tsx'
 import { Composer } from './components/Composer.tsx'
-import { LibraryModal } from './components/LibraryModal.tsx'
+import { Home } from './components/Home.tsx'
+import { LibraryView } from './components/LibraryView.tsx'
 import { Logo } from './components/Logo.tsx'
-import { MessageView } from './components/MessageView.tsx'
-import { Sidebar } from './components/Sidebar.tsx'
-import { Welcome } from './components/Welcome.tsx'
+import { Answer, Question } from './components/Message.tsx'
+import { Sidebar, type View } from './components/Sidebar.tsx'
+import { stopSpeaking } from './lib/speech.ts'
+import { usePrefs } from './lib/prefs.ts'
 import type {
-  Book, ChatMessage, ConversationSummary, Health, ModelId, ModelInfo, Source, StoredMessage, Usage, UsageSummary,
+  Book, ChatMessage, ConversationSummary, Health, Source, StoredMessage, Usage, UsageSummary, Voice,
 } from './types.ts'
-
-const stored = (key: string): string | null => {
-  try { return localStorage.getItem(key) } catch { return null }
-}
-const store = (key: string, value: string) => {
-  try { localStorage.setItem(key, value) } catch { /* private mode: preference just isn't remembered */ }
-}
-
-function useTheme(): [boolean, () => void] {
-  const [dark, setDark] = useState(() => {
-    const saved = stored('smartbook-theme')
-    return saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches
-  })
-  useEffect(() => {
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light'
-    store('smartbook-theme', dark ? 'dark' : 'light')
-  }, [dark])
-  return [dark, () => setDark((d) => !d)]
-}
 
 const toChat = (m: StoredMessage): ChatMessage => ({
   id: m.id, role: m.role, content: m.content, sources: m.sources, blocked: m.blocked,
-  usage: m.role === 'assistant'
-    ? { prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens, cost: m.cost } : undefined,
+  usage: m.role === 'assistant' ? { prompt_tokens: m.prompt_tokens, completion_tokens: m.completion_tokens, cost: m.cost } : undefined,
 })
 
 function toolLabel(data: Record<string, unknown>): string {
   const args = (data.args ?? {}) as Record<string, unknown>
-  if (data.name === 'get_book_details') return `Looked up “${args.title ?? ''}”`
-  if (data.name === 'search_library') return `Searched library: “${args.query ?? ''}”`
+  if (data.name === 'get_book_details') return `looked up “${args.title ?? ''}”`
+  if (data.name === 'search_library') return `searched the library for “${args.query ?? ''}”`
   return String(data.name)
 }
 
+type Toast = { id: number; text: string; kind: 'ok' | 'error' }
+
 export default function App() {
-  const [dark, toggleTheme] = useTheme()
+  const [prefs, setPrefs] = usePrefs()
+  const [view, setView] = useState<View>('chat')
   const [conversations, setConversations] = useState<ConversationSummary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [busy, setBusy] = useState(false)
-  const [models, setModels] = useState<ModelInfo[]>([])
-  const [model, setModel] = useState<ModelId>(() => (stored('smartbook-model') === 'lite' ? 'lite' : 'pro'))
   const [usage, setUsage] = useState<UsageSummary | null>(null)
   const [books, setBooks] = useState<Book[]>([])
+  const [voices, setVoices] = useState<Voice[]>([])
   const [health, setHealth] = useState<Health | null | undefined>(undefined)
-  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [drawer, setDrawer] = useState<Book | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [painting, setPainting] = useState<Set<string>>(new Set())
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [context, setContext] = useState({ used: 0, max: 8192 })
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const activeRef = useRef<string | null>(null)
   const abort = useRef<AbortController | null>(null)
-  const threadEnd = useRef<HTMLDivElement>(null)
+  const scroller = useRef<HTMLDivElement>(null)
+  const pinned = useRef(true)
   const bookCount = useRef(0)
+
+  const toast = useCallback((text: string, kind: Toast['kind'] = 'ok') => {
+    const id = Date.now() + Math.random()
+    setToasts((t) => [...t, { id, text, kind }])
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === 'error' ? 6000 : 3500)
+  }, [])
+  const fail = useCallback((m: string) => toast(m, 'error'), [toast])
 
   const refresh = useCallback(() => {
     api.conversations().then(setConversations).catch(() => {})
@@ -72,13 +70,10 @@ export default function App() {
   useEffect(() => {
     refresh()
     refreshBooks()
-    api.models().then((ms) => {
-      setModels(ms)
-      if (ms[0]) setContext((c) => ({ ...c, max: ms[0].num_ctx }))
-    }).catch(() => {})
+    api.voices().then(setVoices).catch(() => {})
+    api.models().then((ms) => ms[0] && setContext((c) => ({ ...c, max: ms[0].num_ctx }))).catch(() => {})
   }, [refresh, refreshBooks])
 
-  // Poll health: fast while the starter library is indexing or something is down, slow otherwise.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
@@ -98,34 +93,40 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [refreshBooks])
 
-  useEffect(() => { threadEnd.current?.scrollIntoView({ block: 'end' }) }, [messages])
+  // Follow the answer as it streams, unless the reader scrolled up.
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (el && pinned.current) el.scrollTop = el.scrollHeight
+  }, [messages])
+  const onScroll = () => {
+    const el = scroller.current
+    if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140
+  }
 
-  const chooseModel = (m: ModelId) => { setModel(m); store('smartbook-model', m) }
+  const selectConversation = (id: string | null) => { activeRef.current = id; setActiveId(id) }
 
   const send = async (text: string) => {
     if (busy) return
-    const now = Date.now()
-    const assistantId = `pending-${now}`
-    setMessages((ms) => [
-      ...ms,
-      { id: `user-${now}`, role: 'user', content: text },
-      { id: assistantId, role: 'assistant', content: '', pending: true, stage: 'moderating' },
-    ])
-    setBusy(true)
+    const assistantId = `pending-${crypto.randomUUID()}`
+    setView('chat')
     setSidebarOpen(false)
+    pinned.current = true
+    setMessages((ms) => [...ms, { id: `user-${crypto.randomUUID()}`, role: 'user', content: text },
+      { id: assistantId, role: 'assistant', content: '', pending: true, stage: 'moderating', query: text }])
+    setBusy(true)
     const controller = new AbortController()
     abort.current = controller
     const patch = (fn: (m: ChatMessage) => Partial<ChatMessage>) =>
       setMessages((ms) => ms.map((m) => (m.id === assistantId ? { ...m, ...fn(m) } : m)))
 
     try {
-      await streamChat({ message: text, conversation_id: activeId, model }, ({ event, data }) => {
+      await streamChat({ message: text, conversation_id: activeRef.current, model: prefs.model }, ({ event, data }) => {
         switch (event) {
           case 'meta': {
             const id = data.conversation_id as string
-            setActiveId(id)
-            setConversations((cs) => cs.some((c) => c.id === id)
-              ? cs : [{ id, title: data.title as string, updated_at: new Date().toISOString() }, ...cs])
+            selectConversation(id)
+            setConversations((cs) => cs.some((c) => c.id === id) ? cs
+              : [{ id, title: data.title as string, updated_at: new Date().toISOString() }, ...cs])
             break
           }
           case 'status': patch(() => ({ stage: data.stage as string })); break
@@ -134,19 +135,15 @@ export default function App() {
           case 'tool': patch((m) => ({ tools: [...(m.tools ?? []), toolLabel(data)] })); break
           case 'token': patch((m) => ({ content: m.content + (data.text as string) })); break
           case 'blocked':
-            patch(() => ({
-              content: data.message as string, blocked: true,
-              blockedInfo: { layer: data.layer as string, category: data.category as string },
-            }))
+            patch(() => ({ content: data.message as string, blocked: true,
+                           blockedInfo: { layer: data.layer as string, category: data.category as string } }))
             break
           case 'done': {
             const cited = new Set(data.cited as string[])
-            patch((m) => ({
-              pending: false, usage: data.usage as Usage,
-              sources: m.sources?.map((s) => ({ ...s, cited: cited.has(s.book_id) })),
-            }))
+            patch((m) => ({ pending: false, usage: data.usage as Usage,
+                            sources: m.sources?.map((s) => ({ ...s, cited: cited.has(s.book_id) })) }))
             const ctx = data.context as { used: number; max: number }
-            if (ctx.used > 0) setContext(ctx) // blocked turns never reach the model, so keep the last reading
+            if (ctx.used > 0) setContext(ctx)
             break
           }
           case 'error': patch(() => ({ pending: false, error: data.message as string })); break
@@ -154,7 +151,7 @@ export default function App() {
       }, controller.signal)
     } catch (e) {
       if ((e as Error).name === 'AbortError') patch((m) => ({ content: m.content || '_Stopped._' }))
-      else patch(() => ({ error: `Couldn't reach the Smart Book AI server: ${(e as Error).message}` }))
+      else patch(() => ({ error: `I couldn't reach the Smart Book server (${(e as Error).message}).` }))
     } finally {
       patch(() => ({ pending: false }))
       setBusy(false)
@@ -163,81 +160,188 @@ export default function App() {
     }
   }
 
+  const retry = () => {
+    const lastQ = [...messages].reverse().find((m) => m.role === 'user')
+    if (!lastQ) return
+    setMessages((ms) => ms.slice(0, -2))
+    void send(lastQ.content)
+  }
+
   const newChat = () => {
-    setActiveId(null)
+    stopSpeaking()
+    selectConversation(null)
     setMessages([])
     setContext((c) => ({ ...c, used: 0 }))
+    setView('chat')
     setSidebarOpen(false)
   }
 
-  const selectConversation = async (id: string) => {
-    if (busy || id === activeId) return
+  const openConversation = async (id: string) => {
+    if (busy) return
+    setView('chat')
+    setSidebarOpen(false)
+    if (id === activeRef.current) return
     try {
       const conv = await api.conversation(id)
-      setActiveId(id)
+      stopSpeaking()
+      selectConversation(id)
+      pinned.current = true
       setMessages(conv.messages.map(toChat))
-      // Rough estimate until the next answer reports the real number: ~4 chars/token + prompt scaffolding.
       const chars = conv.messages.slice(-8).reduce((n, m) => n + m.content.length, 0)
       setContext((c) => ({ ...c, used: conv.messages.length ? Math.round(chars / 4) + 900 : 0 }))
-      setSidebarOpen(false)
     } catch {
       refresh()
     }
   }
 
-  const deleteChat = async () => {
-    if (!activeId || !confirm('Delete this conversation?')) return
-    await api.deleteConversation(activeId).catch(() => {})
-    newChat()
+  const deleteConversation = async (id: string) => {
+    if (!confirm('Delete this conversation?')) return
+    await api.deleteConversation(id).catch(() => {})
+    if (id === activeRef.current) newChat()
     refresh()
   }
 
+  const illustrate = async (messageId: string, s: Source) => {
+    const caption = `A scene inspired by ${s.title}`
+    const patchIll = (fn: (list: NonNullable<ChatMessage['illustrations']>) => ChatMessage['illustrations']) =>
+      setMessages((ms) => ms.map((m) => (m.id === messageId ? { ...m, illustrations: fn(m.illustrations ?? []) } : m)))
+    patchIll((list) => [...list, { caption, pending: true }])
+    try {
+      const res = await api.illustrate(s.book_id)
+      patchIll((list) => list.map((i) => (i.pending && i.caption === caption ? { url: res.url, caption: res.caption } : i)))
+    } catch (e) {
+      patchIll((list) => list.filter((i) => !(i.pending && i.caption === caption)))
+      fail(`Couldn't paint that: ${(e as Error).message}`)
+    }
+  }
+
+  const paintCover = async (book: Book) => {
+    setPainting((p) => new Set(p).add(book.id))
+    try {
+      const updated = await api.generateCover(book.id)
+      setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
+      setDrawer((d) => (d?.id === updated.id ? updated : d))
+      setMessages((ms) => ms.map((m) => m.sources?.some((s) => s.book_id === updated.id)
+        ? { ...m, sources: m.sources.map((s) => (s.book_id === updated.id ? { ...s, cover_url: updated.cover_url } : s)) } : m))
+      toast(`New cover painted for “${updated.title}”`)
+    } catch (e) {
+      fail(`Couldn't paint a cover: ${(e as Error).message}`)
+    } finally {
+      setPainting((p) => { const n = new Set(p); n.delete(book.id); return n })
+    }
+  }
+
+  const removeBook = async (book: Book) => {
+    if (!confirm(`Remove “${book.title}” from your library?`)) return
+    try {
+      await api.deleteBook(book.id)
+      setDrawer(null)
+      refreshBooks()
+      toast(`Removed “${book.title}”`)
+    } catch (e) {
+      fail((e as Error).message)
+    }
+  }
+
+  const exportLibrary = async () => {
+    try {
+      const data = await api.exportBooks()
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+      Object.assign(document.createElement('a'), { href: url, download: 'smart-book-library.json' }).click()
+      URL.revokeObjectURL(url)
+      toast(`Exported ${data.length} books`)
+    } catch (e) {
+      fail((e as Error).message)
+    }
+  }
+
+  const openBook = (id: string) => { const b = books.find((x) => x.id === id); if (b) setDrawer(b) }
+  const media = health?.media ?? { images: false, tts: false, stt: false }
+  const composerProps = { busy, voiceInput: media.stt, onSend: (t: string) => void send(t),
+                          onStop: () => abort.current?.abort(), onError: fail }
+
   const banner = health === null
-    ? <>Can’t reach the Smart Book AI server. Start it with <code>cd backend && uv run smartbook</code>.</>
+    ? <>Can’t reach the Smart Book server. Start it with <code>cd backend && uv run smartbook</code>.</>
     : health && health.llm === 'ollama' && !health.ollama_up
-      ? <>Ollama isn’t running, so the Qwen models are unavailable. Open the Ollama app or run <code>ollama serve</code>.</>
-      : null
+      ? <>Ollama isn’t running, so I can’t answer yet. Open the Ollama app (or run <code>ollama serve</code>).</> : null
 
   return (
     <div className="app">
       {sidebarOpen && <div className="scrim" onClick={() => setSidebarOpen(false)} />}
       <Sidebar
-        open={sidebarOpen} conversations={conversations} activeId={activeId} bookCount={books.length}
-        usage={usage} dark={dark} busy={busy} onToggleTheme={toggleTheme} onNewChat={newChat}
-        onSelect={(id) => void selectConversation(id)} onDelete={() => void deleteChat()}
-        onOpenLibrary={() => { setLibraryOpen(true); setSidebarOpen(false) }}
+        open={sidebarOpen} view={view} conversations={conversations} activeId={activeId} bookCount={books.length}
+        usage={usage} contextPct={Math.min(100, Math.round((context.used / context.max) * 100))} prefs={prefs}
+        voices={voices} busy={busy} onPrefs={setPrefs} onNewChat={newChat}
+        onLibrary={() => { setView('library'); setSidebarOpen(false) }}
+        onSelect={(id) => void openConversation(id)} onDelete={(id) => void deleteConversation(id)}
       />
       <main className="main">
         <div className="topbar">
-          <button className="btn btn-ghost btn-sm" aria-label="Open menu" onClick={() => setSidebarOpen(true)}>
-            <Menu size={20} />
-          </button>
-          <Logo size={24} /> <strong>Smart Book AI</strong>
+          <button className="icon-btn" aria-label="Open menu" onClick={() => setSidebarOpen(true)}><Menu size={20} /></button>
+          <Logo size={22} /> <b>Smart Book</b>
         </div>
-        {banner && <div className="banner" role="alert"><AlertTriangle size={18} /> <span>{banner}</span></div>}
+        {banner && <div className="banner warn" role="alert"><AlertTriangle size={18} /> <span>{banner}</span></div>}
         {health?.seeding && (
-          <div className="banner" role="status">
-            <Loader2 size={18} className="spin" /> <span>Indexing the starter library with Qwen embeddings…</span>
-          </div>
+          <div className="banner" role="status"><Loader2 size={18} className="spin" /> <span>Setting up your starter library…</span></div>
         )}
-        <div className="thread">
-          {messages.length === 0 ? (
-            <Welcome onPick={(t) => void send(t)} disabled={busy} />
-          ) : (
-            <div className="thread-inner">
-              {messages.map((m) => <MessageView key={m.id} message={m} />)}
-              <div ref={threadEnd} />
+
+        {view === 'library' ? (
+          <div className="scroll">
+            <LibraryView books={books} painting={painting} onOpen={setDrawer} onAdd={() => setAdding(true)} onExport={exportLibrary} />
+          </div>
+        ) : (
+          <>
+            <div className="scroll" ref={scroller} onScroll={onScroll}>
+              <div className="column">
+                {messages.length === 0 ? (
+                  <Home books={books} disabled={busy} onAsk={(t) => void send(t)} onOpenBook={setDrawer}
+                        onBrowse={() => setView('library')} composer={<Composer variant="hero" {...composerProps} />} />
+                ) : (
+                  <div className="thread">
+                    {messages.map((m) => (m.role === 'user' ? <Question key={m.id} m={m} /> : (
+                      <Answer key={m.id} m={m} h={{
+                        voice: prefs.voice, canSpeak: media.tts, canPaint: media.images, busy,
+                        onAsk: (t) => void send(t), onIllustrate: (id, s) => void illustrate(id, s),
+                        onOpenBook: openBook, onRetry: retry, onError: fail,
+                      }} />
+                    )))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-        <Composer
-          busy={busy} models={models} model={model} context={context} onModel={chooseModel}
-          onSend={(t) => void send(t)} onStop={() => abort.current?.abort()}
-        />
+            {messages.length > 0 && (
+              <div className="composer-dock">
+                <div className="column">
+                  <Composer variant="dock" {...composerProps} />
+                  <div className="hint">Smart Book only recommends from your library, and can make mistakes.</div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </main>
-      {libraryOpen && (
-        <LibraryModal books={books} onClose={() => setLibraryOpen(false)} onChanged={() => { refreshBooks(); refresh() }} />
+
+      {drawer && (
+        <BookDrawer
+          book={drawer} canPaint={media.images} painting={painting.has(drawer.id)} onClose={() => setDrawer(null)}
+          onCover={(b) => void paintCover(b)} onRemove={(b) => void removeBook(b)}
+          onAsk={(b) => { setDrawer(null); newChat(); void send(`Tell me about "${b.title}" by ${b.author}. Who would enjoy it?`) }}
+        />
       )}
+      {adding && (
+        <AddBookDialog
+          onClose={() => setAdding(false)}
+          onAdded={(added, note) => {
+            setAdding(false)
+            refreshBooks()
+            refresh()
+            toast(added.length === 1 ? `Added “${added[0].title}” to your library` : `Added ${added.length} books${note ? ` · ${note}` : ''}`)
+          }}
+        />
+      )}
+      <div className="toasts" aria-live="polite">
+        {toasts.map((t) => <div key={t.id} className={`toast ${t.kind === 'error' ? 'error' : ''}`} role="status">{t.text}</div>)}
+      </div>
     </div>
   )
 }

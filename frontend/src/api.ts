@@ -1,5 +1,5 @@
 import type {
-  Book, BookIn, ConversationSummary, Health, ModelId, ModelInfo, StoredMessage, UsageSummary,
+  Book, BookIn, ConversationSummary, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
 } from './types.ts'
 
 function sessionId(): string {
@@ -46,6 +46,22 @@ export const api = {
   conversation: (id: string) =>
     request<ConversationSummary & { messages: StoredMessage[] }>(`/conversations/${id}`),
   deleteConversation: (id: string) => request<{ deleted: boolean }>(`/conversations/${id}`, { method: 'DELETE' }),
+  generateCover: (id: string) => request<Book>(`/books/${id}/cover`, { method: 'POST' }),
+  illustrate: (id: string) => request<{ url: string; caption: string }>(`/books/${id}/illustrate`, { method: 'POST' }),
+  voices: () => request<Voice[]>('/voices'),
+  transcribe: (audio: Blob) => {
+    const form = new FormData()
+    form.append('audio', audio, 'recording.webm')
+    return request<{ text: string }>('/stt', { method: 'POST', body: form })
+  },
+  speak: async (text: string, voice: string, signal?: AbortSignal): Promise<Blob> => {
+    const res = await fetch('/api/tts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Session-Id': SESSION },
+      body: JSON.stringify({ text, voice }), signal,
+    })
+    if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? 'Speech failed')
+    return res.blob()
+  },
 }
 
 export type ChatEvent = { event: string; data: Record<string, unknown> }

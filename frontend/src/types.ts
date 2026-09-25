@@ -20,6 +20,7 @@ export interface Book extends Omit<BookIn, 'text'> {
   id: string
   chunks: number
   source: string
+  cover_url: string | null
   created_at: string
 }
 
@@ -30,6 +31,7 @@ export interface Source {
   genres: string[]
   themes: string[]
   description: string
+  cover_url?: string | null
   score: number | null
   kind: 'summary' | 'text'
   cited?: boolean
@@ -54,6 +56,8 @@ export interface ChatMessage {
   tools?: string[]
   error?: string
   usage?: Usage
+  illustrations?: { url?: string; caption: string; pending?: boolean }[]
+  query?: string
 }
 
 export interface ConversationSummary {
@@ -93,4 +97,10 @@ export interface Health {
   models: Record<string, string>
   books: number
   seeding: boolean
+  media: { images: boolean; tts: boolean; stt: boolean }
+}
+
+export interface Voice {
+  id: string
+  label: string
 }

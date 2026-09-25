@@ -21,3 +21,6 @@ graphify-out/cost.json
 
 # tool backups
 *.graphify-bak
+
+# Local media models (SD-Turbo, Whisper, Kokoro)
+backend/.models/

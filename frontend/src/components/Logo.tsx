@@ -1,18 +1,10 @@
-/** Smart Book AI mark: an open blue book with a small spark. Same drawing as public/favicon.svg. */
-export function Logo({ size = 28 }: { size?: number }) {
+/** Smart Book mark: a plain open book on a blue tile. Same drawing as public/favicon.svg. */
+export function Logo({ size = 26 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true">
-      <defs>
-        <linearGradient id="sb-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#60a5fa" />
-          <stop offset="1" stopColor="#1d4ed8" />
-        </linearGradient>
-      </defs>
-      <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#sb-g)" />
-      <path d="M12 20c7-2.5 13-1.5 19 2.5v25c-6-4-12-5-19-2.5z" fill="#fff" />
-      <path d="M52 20c-7-2.5-13-1.5-19 2.5v25c6-4 12-5 19-2.5z" fill="#dbeafe" />
-      <path d="M16 26c4-1 7-.6 11 1.4M16 31c4-1 7-.6 11 1.4M16 36c4-1 7-.6 11 1.4" stroke="#93c5fd" strokeWidth="1.6" fill="none" strokeLinecap="round" />
-      <path d="M46 7l1.6 4.4L52 13l-4.4 1.6L46 19l-1.6-4.4L40 13l4.4-1.6z" fill="#fde68a" />
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="#1f4fd1" />
+      <path d="M6 10.5c3.6-1.3 6.7-.8 9.3 1.2v11.6c-2.6-1.9-5.7-2.4-9.3-1.2z" fill="#fff" />
+      <path d="M26 10.5c-3.6-1.3-6.7-.8-9.3 1.2v11.6c2.6-1.9 5.7-2.4 9.3-1.2z" fill="#c9d7ff" />
     </svg>
   )
 }

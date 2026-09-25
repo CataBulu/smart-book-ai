@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 """
 
-BOOK_COLUMNS = "id, title, author, description, genres, themes, source, chunks, created_at"
+BOOK_COLUMNS = "id, title, author, description, genres, themes, source, chunks, cover, created_at"
 
 
 def now() -> str:
@@ -68,6 +68,9 @@ def _book(row: sqlite3.Row) -> dict:
     book = dict(row)
     book["genres"] = json.loads(book["genres"])
     book["themes"] = json.loads(book["themes"])
+    cover = book.pop("cover", None)
+    if "id" in book:
+        book["cover_url"] = f"/api/media/covers/{cover}" if cover else None
     return book
 
 
@@ -79,6 +82,8 @@ class Store:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.execute("PRAGMA journal_mode = WAL")
         self.conn.executescript(SCHEMA)
+        if "cover" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(books)")}:
+            self.conn.execute("ALTER TABLE books ADD COLUMN cover TEXT")  # added in round 2
         self.lock = threading.Lock()
 
     def _write(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -123,6 +128,9 @@ class Store:
     def export_books(self) -> list[dict]:
         rows = self._all("SELECT title, author, description, genres, themes, text FROM books ORDER BY lower(title)")
         return [_book(r) for r in rows]
+
+    def set_cover(self, book_id: str, filename: str | None) -> None:
+        self._write("UPDATE books SET cover = ? WHERE id = ?", (filename, book_id))
 
     def delete_book(self, book_id: str) -> bool:
         return self._write("DELETE FROM books WHERE id = ?", (book_id,)).rowcount > 0
