@@ -177,9 +177,10 @@ select.select { height: 34px; border-radius: 8px; border: 1px solid var(--line-2
 .shelf-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
 .shelf-head h2 { font-size: 22px; }
 .shelf-row { display: grid; grid-auto-flow: column; grid-auto-columns: 112px; gap: 18px; overflow-x: auto; padding: 4px 2px 14px; scroll-snap-type: x mandatory; }
-/* buttons centre their content vertically by default, which staggers covers with 1- vs 2-line titles */
-.shelf-book, .grid-book { display: flex; flex-direction: column; align-self: start; text-align: left; }
-.shelf-book { scroll-snap-align: start; }
+/* buttons centre their content vertically by default, which staggers covers with 1- vs 2-line titles.
+   (.grid-book sits in a flex-column .grid-item, where align-self: start would shrink it to the title's width) */
+.shelf-book, .grid-book { display: flex; flex-direction: column; text-align: left; }
+.shelf-book { scroll-snap-align: start; align-self: start; }
 .shelf-book .cover, .grid-book .cover { transition: transform 0.15s, box-shadow 0.15s; }
 .shelf-book:hover .cover, .grid-book:hover .cover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
 .shelf-book p { margin: 8px 0 0; font-size: 13px; line-height: 1.35; font-weight: 500; }

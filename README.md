@@ -55,8 +55,8 @@ cd frontend && npm install && npm run build && cd ..
 # 4. Run: serves API + UI on http://127.0.0.1:8000 and seeds 60 books on first start
 cd backend && uv run smartbook
 ```
-Development with hot reload: run `uv run smartbook` in `backend/` and `npm run dev` in `frontend/`,
-then open http://127.0.0.1:5173.
+Development with hot reload: `./start.sh` (Git Bash on Windows, or any bash) starts Ollama if needed, the
+backend and the Vite UI, then open http://127.0.0.1:5173. Ctrl+C stops what it started; anything already running is reused.
 
 ## GPU & memory
 Settings → **Hardware** shows live VRAM/RAM, how much of the chat model is on the graphics card, and a
