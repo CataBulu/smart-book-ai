@@ -79,3 +79,13 @@ def test_prompts_and_speakable(books):
     assert "non-fiction book about solitude, nature" in p and p.endswith("no text")
     assert "Living alone in a cabin" in scene_prompt(books[0])
     assert speakable("## Picks\n- **Walden** by [Thoreau](http://x)\n> quote") == "Picks Walden by Thoreau quote"
+
+
+def test_hardware_status_and_image_device_switch(client, settings):
+    status = client.get("/api/hardware").json()
+    assert {"gpu", "ram", "ollama", "images", "placement"} <= status.keys()
+    assert status["ram"]["total_gb"] > 0 and status["placement"]["voice"] == "cpu"
+    assert status["images"]["setting"] == "gpu"
+    assert client.post("/api/hardware", json={"images": "cpu"}).json()["images"]["setting"] == "cpu"
+    assert (settings.data_dir / "hardware.json").read_text() == '{"images": "cpu"}'
+    assert client.post("/api/hardware", json={"images": "tpu"}).status_code == 400

@@ -28,7 +28,7 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
 | Smart Book Pro | `qwen3.5:4b` | best answers, ~12 tok/s |
 | Smart Book Lite | `qwen3.5:2b-q4_K_M` | fully on GPU, ~78 tok/s |
 | Embeddings | `qwen3-embedding:0.6b` | runs on CPU so the chat model keeps the GPU |
-| Images | `stabilityai/sd-turbo` | CPU, 2 steps, ~20 s per image; worker process exits when idle |
+| Images | `stabilityai/sd-turbo` | **GPU** (fp16 UNet, GTX 16xx NaN fix), ~4 s per image; CPU fallback ~20 s |
 | Speech | Kokoro-82M (TTS), Whisper base.en (STT) | CPU |
 
 Measurements and reasoning: [`chunks/02-hardware-and-models.md`](chunks/02-hardware-and-models.md).
@@ -52,9 +52,15 @@ cd backend && uv run smartbook
 Development with hot reload: run `uv run smartbook` in `backend/` and `npm run dev` in `frontend/`,
 then open http://127.0.0.1:5173.
 
+## GPU & memory
+Settings → **Hardware** shows live VRAM/RAM, how much of the chat model is on the graphics card, and a
+Graphics card / CPU switch for images. The image model runs in a separate process that is released before every chat
+turn (and after 90 s idle), and the chat model steps aside while an image is painted. Optional Ollama tuning:
+`OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0`. Details: `chunks/02-hardware-and-models.md`.
+
 ## Tests
 ```bash
-cd backend && uv run pytest          # 84 unit/API tests (fake LLM, no Ollama needed)
+cd backend && uv run pytest          # 85 unit/API tests (fake LLM, no Ollama needed)
 cd frontend && npx playwright test   # 10 smoke tests (isolated fake-LLM backend on :8001)
 ```
 

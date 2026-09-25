@@ -112,6 +112,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -0.01e
   position: absolute; z-index: 60; left: 12px; bottom: 58px; width: 290px; padding: 16px; border-radius: 12px; background: var(--surface);
   border: 1px solid var(--line); box-shadow: var(--shadow-lg);
 }
+.popover { max-height: calc(100vh - 80px); overflow-y: auto; }
 .popover h3 { font-family: var(--sans); font-size: 13px; font-weight: 600; margin-bottom: 10px; }
 .popover .row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--ink-2); }
 .popover .row b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
@@ -123,6 +124,20 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 500; letter-spacing: -0.01e
 .segmented button { flex: 1; padding: 5px 8px; border-radius: 6px; font-size: 13px; color: var(--ink-2); }
 .segmented button[aria-pressed='true'] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 500; }
 .setting small { font-size: 12px; color: var(--ink-3); }
+.hardware { border-top: 1px solid var(--line); padding-top: 12px; }
+.hardware > span { display: flex; align-items: center; gap: 5px; }
+.gpu-name { color: var(--ink-2) !important; }
+.meter { display: grid; gap: 4px; }
+.meter-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+.meter-row b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.meter-bar { height: 6px; border-radius: 999px; background: var(--sunken); overflow: hidden; }
+.meter-bar i { display: block; height: 100%; background: var(--blue); border-radius: inherit; transition: width 0.4s; }
+.meter-bar i.hot { background: var(--danger); }
+.placement { list-style: none; margin: 2px 0 0; padding: 0; font-size: 12.5px; color: var(--ink-2); display: grid; gap: 2px; }
+.placement li { display: flex; justify-content: space-between; }
+.placement b { color: var(--ink); font-weight: 600; }
+.setting-sub { display: grid; gap: 6px; margin-top: 6px; }
+.setting-sub > span { font-size: 12px; font-weight: 600; color: var(--ink-2); }
 select.select { height: 34px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); padding: 0 8px; }
 
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; }

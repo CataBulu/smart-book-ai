@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent } from 'react'
 import { Library, MessageSquarePlus, Settings, X } from 'lucide-react'
 import type { Prefs, ThemePref } from '../lib/prefs.ts'
 import type { ConversationSummary, ModelId, UsageSummary, Voice } from '../types.ts'
+import { HardwarePanel } from './HardwarePanel.tsx'
 import { Logo } from './Logo.tsx'
 
 export type View = 'chat' | 'library'
@@ -34,6 +35,7 @@ interface Props {
   onLibrary: () => void
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onError: (message: string) => void
 }
 
 export function Sidebar(p: Props) {
@@ -140,6 +142,7 @@ export function Sidebar(p: Props) {
               {p.voices.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </div>
+          <HardwarePanel onError={p.onError} />
         </div>
       )}
     </aside>

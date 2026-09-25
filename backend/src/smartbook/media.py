@@ -59,66 +59,143 @@ def wav_bytes(samples, sample_rate: int) -> bytes:
     return buf.getvalue()
 
 
-_pipe = None  # lives only inside the image worker process
+_pipes: dict[str, object] = {}  # lives only inside the image worker process, keyed by device
 
 
-def _load_pipeline():
-    global _pipe
-    if _pipe is None:
+def cuda_build() -> bool:
+    """True when the installed torch is a CUDA build and an NVIDIA driver is present (checked without importing torch)."""
+    import shutil
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return "+cu" in version("torch") and shutil.which("nvidia-smi") is not None
+    except PackageNotFoundError:
+        return False
+
+
+def gpu_status() -> dict | None:
+    """NVIDIA GPU name and VRAM via nvidia-smi (no CUDA context is created in this process)."""
+    import shutil
+    import subprocess
+
+    if not shutil.which("nvidia-smi"):
+        return None
+    try:
+        out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,memory.used,utilization.gpu",
+                              "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5).stdout
+        name, total, used, util = [x.strip() for x in out.splitlines()[0].split(",")]
+        return {"name": name, "total_mb": int(total), "used_mb": int(used), "util_pct": int(util)}
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
+def _load_pipeline(device: str = "cpu"):
+    if device not in _pipes:
         try:
             import torch
             from diffusers import AutoPipelineForText2Image
         except ImportError as e:
             raise MediaUnavailable(f"image generation needs torch + diffusers: {e}") from e
         torch.set_num_threads(os.cpu_count() or 4)
-        # fp16 weights download (~2.6 GB) upcast to fp32: CPUs have no fast fp16 path.
-        _pipe = AutoPipelineForText2Image.from_pretrained(
-            SD_MODEL, variant="fp16", torch_dtype=torch.float32, cache_dir=MODELS_DIR / "hf")
-        _pipe.set_progress_bar_config(disable=True)
-    return _pipe
+        if device == "cuda":
+            # GTX 16xx: fp16 UNet on the GPU (cuDNN off — its fp16 convs return NaN on Turing GTX), fp32 VAE on the
+            # GPU with cuDNN (fp32 is fine), CLIP text encoder on the CPU in fp32. Peak ~2.7 GB VRAM, ~3.5 s/image.
+            pipe = AutoPipelineForText2Image.from_pretrained(
+                SD_MODEL, variant="fp16", torch_dtype=torch.float16, cache_dir=MODELS_DIR / "hf")
+            encoder, vae = pipe.text_encoder.to(torch.float32), pipe.vae.to("cuda", torch.float32)
+            pipe.text_encoder = pipe.vae = None
+            pipe.unet.to("cuda")
+            pipe.set_progress_bar_config(disable=True)
+            _pipes[device] = (pipe, encoder, vae)
+        else:
+            # fp16 weights download (~2.6 GB) upcast to fp32: CPUs have no fast fp16 path.
+            pipe = AutoPipelineForText2Image.from_pretrained(
+                SD_MODEL, variant="fp16", torch_dtype=torch.float32, cache_dir=MODELS_DIR / "hf")
+            pipe.set_progress_bar_config(disable=True)
+            _pipes[device] = pipe
+    return _pipes[device]
 
 
-def _render(prompt: str, width: int, height: int, seed: int, steps: int) -> bytes:
+def _render(prompt: str, width: int, height: int, seed: int, steps: int, device: str = "cpu") -> bytes:
     import torch
+    from PIL import Image
 
-    image = _load_pipeline()(prompt=prompt, num_inference_steps=steps, guidance_scale=0.0, width=width,
-                             height=height, generator=torch.Generator().manual_seed(seed)).images[0]
+    if device == "cuda":
+        pipe, encoder, vae = _load_pipeline("cuda")
+        ids = pipe.tokenizer(prompt, padding="max_length", max_length=pipe.tokenizer.model_max_length,
+                             truncation=True, return_tensors="pt").input_ids
+        with torch.no_grad():
+            embeds = encoder(ids)[0].to("cuda", torch.float16)
+        torch.backends.cudnn.enabled = False
+        latents = pipe(prompt_embeds=embeds, num_inference_steps=steps, guidance_scale=0.0, width=width, height=height,
+                       output_type="latent", generator=torch.Generator("cuda").manual_seed(seed)).images
+        torch.backends.cudnn.enabled = True
+        with torch.no_grad():
+            pixels = vae.decode(latents.float() / vae.config.scaling_factor).sample[0]
+        image = Image.fromarray(((pixels.clamp(-1, 1) + 1) * 127.5).round().byte().permute(1, 2, 0).cpu().numpy())
+    else:
+        image = _load_pipeline("cpu")(prompt=prompt, num_inference_steps=steps, guidance_scale=0.0, width=width,
+                                      height=height, generator=torch.Generator().manual_seed(seed)).images[0]
     buf = io.BytesIO()
     image.save(buf, "WEBP", quality=88)
     return buf.getvalue()
 
 
 class ImageGenerator:
-    """SD-Turbo runs in a worker process: fp32 weights need ~5 GB RAM, which torch never hands back to the OS,
-    and on a 16 GB PC that starves Ollama. The worker exits after idling, returning all of it."""
+    """SD-Turbo runs in a worker process that exits when idle, so its memory always goes back to the OS
+    (torch never returns freed RAM, and on a 16 GB PC a resident 5 GB CPU pipeline starved Ollama).
+
+    device "gpu": ~3.5 s/image, ~2.2 GB RAM, ~2.7 GB VRAM — `before_gpu` unloads the chat model first, and
+    `release()` is called before every chat turn so the chat model gets the whole GPU back.
+    device "cpu": ~20 s/image, ~6 GB RAM, no VRAM.
+    """
 
     ext = "webp"
 
-    def __init__(self, steps: int = 2, idle_unload_s: float = 90.0):
+    def __init__(self, steps: int = 2, idle_unload_s: float = 90.0, device: str = "gpu", before_gpu=None):
         self.steps = steps
         self.idle_unload_s = idle_unload_s
+        self.device = device
+        self.before_gpu = before_gpu
         self._pool: ProcessPoolExecutor | None = None
         self._timer: threading.Timer | None = None
         self._lock = threading.Lock()
 
-    def _shutdown(self) -> None:
+    @property
+    def effective_device(self) -> str:
+        return "gpu" if self.device == "gpu" and cuda_build() else "cpu"
+
+    def release(self) -> None:
+        """Stop the worker now (frees its RAM and VRAM). Safe to call anytime."""
+        if self._pool is None:
+            return
         with self._lock:
+            if self._timer:
+                self._timer.cancel()
             if self._pool:
                 self._pool.shutdown(wait=False, cancel_futures=True)
                 self._pool = None
 
+    def set_device(self, device: str) -> None:
+        self.release()
+        self.device = device
+
     def generate(self, prompt: str, width: int, height: int, seed: int) -> bytes:
+        gpu = self.effective_device == "gpu"
+        if gpu and self.before_gpu:
+            self.before_gpu()
         with self._lock:
             if self._timer:
                 self._timer.cancel()
             self._pool = self._pool or ProcessPoolExecutor(max_workers=1)
             try:
-                return self._pool.submit(_render, prompt, width, height, seed, self.steps).result()
+                return self._pool.submit(_render, prompt, width, height, seed, self.steps,
+                                         "cuda" if gpu else "cpu").result()
             except BrokenProcessPool as e:
                 self._pool = None
                 raise MediaUnavailable("the image worker crashed (out of memory?) — try again") from e
             finally:
-                self._timer = threading.Timer(self.idle_unload_s, self._shutdown)
+                self._timer = threading.Timer(self.idle_unload_s, self.release)
                 self._timer.daemon = True
                 self._timer.start()
 
@@ -179,6 +256,14 @@ def tiny_png(rgb: tuple[int, int, int] = (37, 99, 235)) -> bytes:
 
 class FakeImageGenerator:
     ext = "png"
+    device = "gpu"
+    effective_device = "cpu"
+
+    def release(self) -> None:
+        pass
+
+    def set_device(self, device: str) -> None:
+        self.device = device
 
     def generate(self, prompt: str, width: int, height: int, seed: int) -> bytes:
         return tiny_png()
@@ -221,7 +306,7 @@ def download() -> None:
     print("Loading Whisper (downloads on first run) …")
     Transcriber()._load()
     print("Loading SD-Turbo (downloads ~2.6 GB on first run) …")
-    _load_pipeline()
+    _load_pipeline("cpu")
     print(f"All media models ready in {MODELS_DIR}")
 
 

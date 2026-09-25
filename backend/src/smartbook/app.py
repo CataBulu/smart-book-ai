@@ -51,8 +51,11 @@ def build_services(settings: Settings) -> Services:
     library = Library(store, llm, settings.data_dir / "chroma")
     moderator = SemanticModerator(llm, settings.moderation_threshold)
     fake = settings.fake_llm
+    prefs_file = settings.data_dir / "hardware.json"
+    device = json.loads(prefs_file.read_text()).get("images", "gpu") if prefs_file.is_file() else "gpu"
     return Services(settings, store, llm, library, ChatService(settings, store, library, moderator, llm),
-                    media.FakeImageGenerator() if fake else media.ImageGenerator(),
+                    media.FakeImageGenerator() if fake
+                    else media.ImageGenerator(device=device, before_gpu=llm.unload_all_sync),
                     media.FakeTranscriber() if fake else media.Transcriber(),
                     media.FakeSpeaker() if fake else media.Speaker())
 
@@ -174,6 +177,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
         conv_id = body.get("conversation_id") or None
         sid = session_id(request)
 
+        await asyncio.to_thread(svc.images.release)  # give the GPU back to the chat model
+
         async def stream():
             try:
                 async for event, data in svc.chat.run(sid, message, model, conv_id):
@@ -236,6 +241,38 @@ def create_app(settings: Settings | None = None) -> Starlette:
             return error(404, "Not found")
         return FileResponse(path, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
+    async def hardware(request: Request) -> JSONResponse:
+        if request.method == "POST":
+            try:
+                device = (await request.json()).get("images")
+            except json.JSONDecodeError:
+                device = None
+            if device not in ("gpu", "cpu"):
+                return error(400, 'Body must be {"images": "gpu" | "cpu"}')
+            await asyncio.to_thread(svc.images.set_device, device)
+            (settings.data_dir / "hardware.json").write_text(json.dumps({"images": device}))
+        return JSONResponse(await hardware_status())
+
+    async def hardware_status() -> dict:
+        import psutil
+
+        vm = psutil.virtual_memory()
+        gpu = await asyncio.to_thread(media.gpu_status)
+        chat_models = []
+        for m in await svc.llm.loaded_models():
+            size, vram = m.get("size", 0), m.get("size_vram", 0)
+            chat_models.append({"name": m.get("name"), "size_gb": round(size / 1e9, 2), "vram_gb": round(vram / 1e9, 2),
+                                "gpu_pct": round(100 * vram / size) if size else 0})
+        return {
+            "gpu": gpu,
+            "ram": {"total_gb": round(vm.total / 2**30, 1), "used_gb": round(vm.used / 2**30, 1)},  # GiB, like Windows
+            "ollama": chat_models,
+            "images": {"setting": svc.images.device, "running_on": svc.images.effective_device,
+                       "gpu_available": media.cuda_build() and gpu is not None},
+            "placement": {"chat": "gpu+cpu" if chat_models else "not loaded", "embeddings": "cpu" if settings.embed_on_cpu
+                          else "gpu", "voice": "cpu"},
+        }
+
     async def voices(request: Request) -> JSONResponse:
         return JSONResponse([{"id": k, "label": v} for k, v in media.VOICES.items()])
 
@@ -290,6 +327,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/books/{book_id}/illustrate", illustrate, methods=["POST"]),
         Route("/api/media/{kind}/{name}", media_file),
         Route("/api/voices", voices),
+        Route("/api/hardware", hardware, methods=["GET", "POST"]),
         Route("/api/tts", tts, methods=["POST"]),
         Route("/api/stt", stt, methods=["POST"]),
         Route("/api/chat", chat, methods=["POST"]),

@@ -93,6 +93,24 @@ class OllamaClient:
         except httpx.HTTPError:
             return False
 
+    async def loaded_models(self) -> list[dict]:
+        """Models Ollama currently holds in memory, with how much of each sits in VRAM."""
+        try:
+            r = await self.http.get("/api/ps", timeout=3.0)
+            return r.json().get("models", []) if r.status_code == 200 else []
+        except httpx.HTTPError:
+            return []
+
+    def unload_all_sync(self) -> None:
+        """Evict every loaded model from VRAM (used before the image model takes the GPU)."""
+        base = str(self.http.base_url)
+        with httpx.Client(base_url=base, timeout=30.0) as c:
+            try:
+                for m in c.get("/api/ps").json().get("models", []):
+                    c.post("/api/generate", json={"model": m["name"], "keep_alive": 0})
+            except httpx.HTTPError:
+                pass  # Ollama down: nothing to unload
+
 
 # --- fake ------------------------------------------------------------------
 
@@ -155,3 +173,9 @@ class FakeLLM:
 
     async def is_up(self) -> bool:
         return True
+
+    async def loaded_models(self) -> list[dict]:
+        return []
+
+    def unload_all_sync(self) -> None:
+        pass

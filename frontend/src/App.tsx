@@ -273,7 +273,7 @@ export default function App() {
         usage={usage} contextPct={Math.min(100, Math.round((context.used / context.max) * 100))} prefs={prefs}
         voices={voices} busy={busy} onPrefs={setPrefs} onNewChat={newChat}
         onLibrary={() => { setView('library'); setSidebarOpen(false) }}
-        onSelect={(id) => void openConversation(id)} onDelete={(id) => void deleteConversation(id)}
+        onSelect={(id) => void openConversation(id)} onDelete={(id) => void deleteConversation(id)} onError={fail}
       />
       <main className="main">
         <div className="topbar">

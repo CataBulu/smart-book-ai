@@ -1,5 +1,5 @@
 import type {
-  Book, BookIn, ConversationSummary, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
+  Book, BookIn, ConversationSummary, HardwareStatus, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
 } from './types.ts'
 
 function sessionId(): string {
@@ -49,6 +49,9 @@ export const api = {
   generateCover: (id: string) => request<Book>(`/books/${id}/cover`, { method: 'POST' }),
   illustrate: (id: string) => request<{ url: string; caption: string }>(`/books/${id}/illustrate`, { method: 'POST' }),
   voices: () => request<Voice[]>('/voices'),
+  hardware: () => request<HardwareStatus>('/hardware'),
+  setImageDevice: (images: 'gpu' | 'cpu') =>
+    request<HardwareStatus>('/hardware', { method: 'POST', body: JSON.stringify({ images }) }),
   transcribe: (audio: Blob) => {
     const form = new FormData()
     form.append('audio', audio, 'recording.webm')

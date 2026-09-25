@@ -104,3 +104,11 @@ export interface Voice {
   id: string
   label: string
 }
+
+export interface HardwareStatus {
+  gpu: { name: string; total_mb: number; used_mb: number; util_pct: number } | null
+  ram: { total_gb: number; used_gb: number }
+  ollama: { name: string; size_gb: number; vram_gb: number; gpu_pct: number }[]
+  images: { setting: 'gpu' | 'cpu'; running_on: 'gpu' | 'cpu'; gpu_available: boolean }
+  placement: { chat: string; embeddings: string; voice: string }
+}
