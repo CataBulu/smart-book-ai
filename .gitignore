@@ -24,3 +24,9 @@ graphify-out/cost.json
 
 # Local media models (SD-Turbo, Whisper, Kokoro)
 backend/.models/
+
+# Book files you import stay on this PC - never commit them
+/*.pdf
+/*.epub
+/*.mobi
+/*.azw3
