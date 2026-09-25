@@ -331,6 +331,34 @@ def _first_sentence(text: str) -> str:
     return re.split(r"(?<=[.!?])\s", " ".join(text.split()), maxsplit=1)[0][:220]
 
 
+COVER_MAX = (768, 1024)
+COVER_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "BMP"}
+
+
+def cover_from_upload(data: bytes) -> bytes:
+    """A picture the reader chose as a cover: checked, turned upright, shrunk to fit 768x1024 and re-encoded as WebP,
+    so only a clean image of ours is ever served (never the uploaded bytes)."""
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            if im.format not in COVER_FORMATS:
+                raise ValueError(f"{im.format} pictures aren't supported")
+            im.draft("RGB", COVER_MAX)  # JPEGs decode straight at a smaller size
+            im = ImageOps.exif_transpose(im)
+            im.thumbnail(COVER_MAX)
+            if im.mode in ("RGBA", "LA", "P"):  # transparent parts become cover paper, not black
+                im = im.convert("RGBA")
+                flat = Image.new("RGB", im.size, (248, 247, 240))
+                flat.paste(im, mask=im.getchannel("A"))
+                im = flat
+            out = io.BytesIO()
+            im.convert("RGB").save(out, "WEBP", quality=88)
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as e:
+        raise ValueError("That file isn't a picture Smart Book can use — choose a JPEG, PNG or WebP image.") from e
+    return out.getvalue()
+
+
 def cover_prompt(book: dict) -> str:
     return (f"Elegant minimalist book cover artwork for a {_mood(book)}. {_first_sentence(book['description'])} "
             "Painterly, atmospheric, muted blue palette, soft cinematic light, centered composition, no text")

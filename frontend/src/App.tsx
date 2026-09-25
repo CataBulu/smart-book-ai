@@ -239,19 +239,33 @@ export default function App() {
     }
   }
 
+  /** A book got a new cover: show it on the shelves, in the drawer and on answers that mention it. */
+  const coverChanged = (updated: Book) => {
+    setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
+    setDrawer((d) => (d?.id === updated.id ? updated : d))
+    setMessages((ms) => ms.map((m) => m.sources?.some((s) => s.book_id === updated.id)
+      ? { ...m, sources: m.sources.map((s) => (s.book_id === updated.id ? { ...s, cover_url: updated.cover_url } : s)) } : m))
+  }
+
   const paintCover = async (book: Book) => {
     setPainting((p) => new Set(p).add(book.id))
     try {
       const updated = await api.generateCover(book.id)
-      setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
-      setDrawer((d) => (d?.id === updated.id ? updated : d))
-      setMessages((ms) => ms.map((m) => m.sources?.some((s) => s.book_id === updated.id)
-        ? { ...m, sources: m.sources.map((s) => (s.book_id === updated.id ? { ...s, cover_url: updated.cover_url } : s)) } : m))
+      coverChanged(updated)
       toast(`New cover painted for “${updated.title}”`)
     } catch (e) {
       fail(`Couldn't paint a cover: ${(e as Error).message}`)
     } finally {
       setPainting((p) => { const n = new Set(p); n.delete(book.id); return n })
+    }
+  }
+
+  const uploadCover = async (book: Book, file: File) => {
+    try {
+      coverChanged(await api.uploadCover(book.id, file))
+      toast(`Your cover is on “${book.title}”`)
+    } catch (e) {
+      fail(`Couldn't use that picture: ${(e as Error).message}`)
     }
   }
 
@@ -425,7 +439,7 @@ export default function App() {
       {drawer && (
         <BookDrawer
           book={drawer} canPaint={media.images} painting={painting.has(drawer.id)} onClose={() => setDrawer(null)}
-          onCover={(b) => void paintCover(b)} onRemove={(b) => void removeBook(b)}
+          onCover={(b) => void paintCover(b)} onUploadCover={(b, f) => void uploadCover(b, f)} onRemove={(b) => void removeBook(b)}
           attaching={attaching === drawer.id} onRead={readBook} onAttach={(b, f) => void attachText(b, f)}
           onEdit={setEditing} onOpenSeries={openSeries}
           onAsk={(b) => { setDrawer(null); newChat(); void send(`Tell me about "${b.title}" by ${b.author}. Who would enjoy it?`) }}

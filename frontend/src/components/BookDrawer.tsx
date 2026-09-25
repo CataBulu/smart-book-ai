@@ -1,9 +1,17 @@
 import { useEffect, useRef } from 'react'
-import { BookOpen, FileUp, Library, Loader2, MessageCircle, Paintbrush, Pencil, Trash2, X } from 'lucide-react'
+import { BookOpen, FileUp, ImagePlus, Library, Loader2, MessageCircle, Paintbrush, Pencil, Trash2, X } from 'lucide-react'
 import type { Book } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
 
 const ACCEPT = '.pdf,.docx,.epub,.md,.markdown,.txt'
+const PICTURES = '.jpg,.jpeg,.png,.webp,.gif,.bmp'
+const CHARS_PER_PAGE = 1650 // a printed paperback page, roughly
+
+function pagesLabel(chars: number): string {
+  if (!chars) return 'No pages yet'
+  const n = Math.max(1, Math.round(chars / CHARS_PER_PAGE))
+  return `Contains about ${n.toLocaleString()} page${n === 1 ? '' : 's'}`
+}
 
 interface Props {
   book: Book
@@ -15,14 +23,16 @@ interface Props {
   onAttach: (book: Book, file: File) => void
   onAsk: (book: Book) => void
   onCover: (book: Book) => void
+  onUploadCover: (book: Book, file: File) => void
   onRemove: (book: Book) => void
   onEdit: (book: Book) => void
   onOpenSeries: (name: string) => void
 }
 
-export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRead, onAttach, onAsk, onCover, onRemove, onEdit,
-  onOpenSeries }: Props) {
+export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRead, onAttach, onAsk, onCover, onUploadCover,
+  onRemove, onEdit, onOpenSeries }: Props) {
   const file = useRef<HTMLInputElement>(null)
+  const picture = useRef<HTMLInputElement>(null)
   const p = book.progress
 
   useEffect(() => {
@@ -78,10 +88,15 @@ export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRea
                 <Paintbrush size={16} /> {painting ? 'Painting a cover…' : book.cover_url ? 'Paint a new cover' : 'Paint a cover'}
               </button>
             )}
+            <input ref={picture} type="file" accept={PICTURES} hidden data-testid="cover-input"
+                   onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadCover(book, f); e.target.value = '' }} />
+            <button className="btn" onClick={() => picture.current?.click()} disabled={painting}>
+              <ImagePlus size={16} /> Add your own cover from files
+            </button>
             <button className="btn btn-quiet btn-danger" onClick={() => onRemove(book)}><Trash2 size={16} /> Remove from library</button>
           </div>
           <div className="drawer-meta">
-            Indexed as {book.chunks} passage{book.chunks === 1 ? '' : 's'} · added {new Date(book.created_at).toLocaleDateString()}
+            {pagesLabel(book.text_chars)} · added {new Date(book.created_at).toLocaleDateString()}
           </div>
         </div>
       </aside>

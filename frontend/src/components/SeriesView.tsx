@@ -55,7 +55,7 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Pro
         <div className="progress-line series-total" title={`${Math.round(pct)}% of the series read`}><i style={{ width: `${pct}%` }} /></div>
         <ol className="series-list" data-testid="series-list" {...sortable.containerProps}>
           {sortable.ordered.map((b, i) => (
-            <li key={b.id} className="series-item" {...sortable.itemProps(b.id)} title="Drag to change the reading order (or Alt + arrow keys)">
+            <li key={b.id} className="series-item" {...sortable.itemProps(b.id)} style={{ ['--i' as string]: i }} title="Drag to change the reading order (or Alt + arrow keys)">
               <GripVertical size={16} className="grip" aria-hidden="true" />
               <button className="series-book" onClick={() => onOpenBook(b)} data-testid="series-book">
                 <span className="series-no">{sortable.dragging ? `#${start + i}` : b.series_index !== null ? `#${b.series_index}` : '–'}</span>

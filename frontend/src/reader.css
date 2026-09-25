@@ -243,4 +243,18 @@
   background: var(--paper); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 .series-row { animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.12s backwards; }
-@media (prefers-reduced-motion: reduce) { .series-row { animation: none; } }
+/* the series develops too: its books rise in turn and each cover develops (--i = place in the series). The li itself
+   never animates, so the drag hook's getAnimations() guard and FLIP glide on it are unaffected. */
+.series-item > .grip, .series-book { animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; animation-delay: calc(min(var(--i, 0), 12) * 70ms + 0.1s); }
+.series-book .cover {
+  animation: develop 0.95s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; animation-delay: calc(min(var(--i, 0), 12) * 70ms + 0.2s);
+}
+.series-stack-item .cover { animation: develop 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.25s backwards; }
+.series-stack-item:nth-child(2) .cover { animation-delay: 0.35s; }
+.series-stack-item:nth-child(3) .cover { animation-delay: 0.45s; }
+/* reading progress fills in from empty when it appears */
+.progress-line i { animation: fill 1s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s backwards; }
+@keyframes fill { from { width: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .series-row, .series-item > .grip, .series-book, .series-book .cover, .series-stack-item .cover, .progress-line i { animation: none; }
+}

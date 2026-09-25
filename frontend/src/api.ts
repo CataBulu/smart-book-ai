@@ -68,6 +68,12 @@ export const api = {
     request<ConversationSummary & { messages: StoredMessage[] }>(`/conversations/${id}`),
   deleteConversation: (id: string) => request<{ deleted: boolean }>(`/conversations/${id}`, { method: 'DELETE' }),
   generateCover: (id: string) => request<Book>(`/books/${id}/cover`, { method: 'POST' }),
+  uploadCover: (id: string, file: File) => {
+    checkSize(file)
+    const form = new FormData()
+    form.append('file', file)
+    return request<Book>(`/books/${id}/cover`, { method: 'PUT', body: form })
+  },
   illustrate: (id: string) => request<{ url: string; caption: string }>(`/books/${id}/illustrate`, { method: 'POST' }),
   voices: () => request<Voice[]>('/voices'),
   bookContent: (id: string) =>

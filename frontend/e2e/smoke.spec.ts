@@ -345,3 +345,33 @@ test('library: drag books into your own order, it is saved, and Sort switches vi
   await expect(page.getByText('Clear the search and genre filter to rearrange your shelves.')).toBeVisible()
   await expect(items.first()).toHaveAttribute('draggable', 'false')
 })
+
+test('series dialog: choose files before naming the series; the name is asked for at Continue', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByRole('button', { name: /^A whole series/ }).click()
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: /click to choose/ }).click() // no series name yet
+  await (await chooser).setFiles({ name: 'Tide 1.txt', mimeType: 'text/plain', buffer: Buffer.from('The tide came in. '.repeat(40)) })
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByText('Name the series first, e.g. The Witcher.')).toBeVisible()
+  await expect(page.getByLabel('Series name')).toBeFocused()
+})
+
+test('drawer: page count, and your own cover from a picture file', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByTestId('book-card').filter({ hasText: 'Pride and Prejudice' }).click()
+  await expect(page.locator('.drawer-meta')).toContainText(/Contains about \d+ pages/)
+  await page.keyboard.press('Escape')
+  await page.getByTestId('book-card').filter({ hasText: 'Stoner' }).click()
+  await expect(page.locator('.drawer-meta')).toContainText('No pages yet')
+
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+  await expect(page.getByRole('button', { name: 'Add your own cover from files' })).toBeVisible()
+  await page.getByTestId('cover-input').setInputFiles({ name: 'my-stoner.png', mimeType: 'image/png', buffer: png })
+  await expect(page.getByText('Your cover is on “Stoner”')).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Stoner' }).getByRole('img', { name: 'Cover of Stoner' })).toHaveAttribute('src', /\.webp$/)
+
+  await page.getByTestId('cover-input').setInputFiles({ name: 'notes.png', mimeType: 'image/png', buffer: Buffer.from('not a picture') })
+  await expect(page.getByText(/Couldn't use that picture/)).toBeVisible()
+})

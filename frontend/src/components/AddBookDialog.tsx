@@ -121,6 +121,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
   const seriesReady = () => {
     if (sForm.series.trim()) return true
     setError('Name the series first, e.g. The Witcher.')
+    document.getElementById('s-series')?.focus()
     return false
   }
 
@@ -230,7 +231,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
     <>
       <button
         className={`dropzone${over ? ' over' : ''}${staged.length ? ' compact' : ''}`} disabled={!!busy}
-        onClick={() => (!multiple || seriesReady()) && picker.current?.click()}
+        onClick={() => picker.current?.click()}
         onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}
       >
         <FileUp size={staged.length ? 20 : 28} />

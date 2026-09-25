@@ -428,10 +428,10 @@ select.select { height: 34px; border-radius: 3px; border: 1px solid var(--line-2
 .dropzone.over, .dropzone:hover { border-color: var(--blue); background: var(--blue-soft); }
 .dropzone svg { color: var(--blue-ink); margin-bottom: 8px; }
 .dropzone p { margin: 4px 0; }
-.dropzone small { color: var(--ink-3); font: 12px var(--mono); }
+.dropzone small { display: block; color: var(--ink-3); font: 12px/1.6 var(--mono); text-wrap: balance; }
 .form { display: grid; gap: 14px; }
 .form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.field { display: grid; gap: 5px; }
+.field { display: grid; gap: 5px; align-content: start; } /* don't stretch when the field beside it is taller */
 .field label { font: 700 12.5px var(--mono); color: var(--ink-2); }
 .field input, .field textarea { border: 1px solid var(--line-2); border-radius: 3px; background: var(--surface); padding: 9px 11px; outline: 0; }
 .field input:focus, .field textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }

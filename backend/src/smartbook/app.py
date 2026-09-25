@@ -398,7 +398,24 @@ def create_app(settings: Settings | None = None) -> Starlette:
             return error(503, str(e))
         except ValueError as e:
             return error(422, str(e))
-        name = f"{book['id']}-{int(time.time() * 1000)}.{svc.images.ext}"
+        return save_cover(book, data, svc.images.ext)
+
+    async def upload_cover(request: Request) -> JSONResponse:
+        book = svc.store.get_book(request.path_params["book_id"])
+        if not book:
+            return error(404, "Book not found")
+        got = await read_upload(request, "file")
+        if isinstance(got, JSONResponse):
+            return got
+        try:
+            data = await asyncio.to_thread(media.cover_from_upload, got[1])
+        except ValueError as e:
+            return error(422, str(e))
+        return save_cover(book, data, "webp")
+
+    def save_cover(book: dict, data: bytes, ext: str) -> JSONResponse:
+        """Store a new cover for the book and delete the one it replaces."""
+        name = f"{book['id']}-{int(time.time() * 1000)}.{ext}"
         (media_dirs["covers"] / name).write_bytes(data)
         old = book["cover_url"]
         svc.store.set_cover(book["id"], name)
@@ -513,6 +530,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/conversations/{conv_id}", delete_conversation, methods=["DELETE"]),
         Route("/api/usage", usage),
         Route("/api/books/{book_id}/cover", generate_cover, methods=["POST"]),
+        Route("/api/books/{book_id}/cover", upload_cover, methods=["PUT"]),
         Route("/api/books/{book_id}/content", book_content),
         Route("/api/books/{book_id}/progress", save_progress, methods=["PUT"]),
         Route("/api/books/{book_id}/text", attach_text, methods=["POST"]),

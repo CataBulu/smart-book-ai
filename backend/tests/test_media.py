@@ -31,6 +31,40 @@ def test_generate_cover_persists_and_replaces(client, books):
     assert client.get(second).status_code == 404  # cover removed with the book
 
 
+def picture(fmt="PNG", size=(1600, 2400), mode="RGB"):
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new(mode, size, (30, 80, 140) if mode == "RGB" else (30, 80, 140, 0)).save(out, fmt)
+    return out.getvalue()
+
+
+def test_upload_own_cover(client, books):
+    from PIL import Image
+    book = add_book(client, books)
+    painted = client.post(f"/api/books/{book['id']}/cover").json()["cover_url"]
+
+    r = client.put(f"/api/books/{book['id']}/cover", files={"file": ("mine.jpg", picture("JPEG"), "image/jpeg")})
+    assert r.status_code == 200, r.text
+    url = r.json()["cover_url"]
+    assert url.endswith(".webp") and url != painted
+    assert client.get(painted).status_code == 404  # the painted cover it replaced is gone
+    served = Image.open(io.BytesIO(client.get(url).content))
+    assert served.format == "WEBP" and served.size == (683, 1024)  # re-encoded and shrunk, aspect kept
+
+    see_through = client.put(f"/api/books/{book['id']}/cover",
+                             files={"file": ("logo.png", picture("PNG", (64, 64), "RGBA"), "image/png")})
+    assert Image.open(io.BytesIO(client.get(see_through.json()["cover_url"]).content)).mode == "RGB"
+
+
+def test_upload_cover_rejects_non_pictures(client, books):
+    book = add_book(client, books)
+    bad = client.put(f"/api/books/{book['id']}/cover", files={"file": ("cover.png", b"<svg>not a png</svg>", "image/png")})
+    assert bad.status_code == 422 and "JPEG, PNG or WebP" in bad.json()["error"]
+    assert client.get("/api/books").json()[0]["cover_url"] is None
+    assert client.put(f"/api/books/{book['id']}/cover").status_code == 400  # no file sent
+    assert client.put("/api/books/nope/cover", files={"file": ("a.png", picture(), "image/png")}).status_code == 404
+
+
 def test_cover_shows_up_in_chat_sources(client, books):
     book = add_book(client, books)
     url = client.post(f"/api/books/{book['id']}/cover").json()["cover_url"]
