@@ -10,7 +10,7 @@ from pathlib import PurePath
 from xml.etree import ElementTree
 
 SUPPORTED = {".pdf", ".docx", ".epub", ".md", ".markdown", ".txt", ".json"}
-MAX_TEXT_CHARS = 2_000_000
+MAX_TEXT_CHARS = 5_000_000  # ~4,000 printed pages
 
 
 class ImportErrorBadFile(ValueError):
@@ -100,13 +100,18 @@ def _from_markdown(data: bytes, stem: str) -> list[dict]:
              "text": text.strip(), "source": "markdown"}]
 
 
-def _from_pdf(data: bytes, stem: str) -> list[dict]:
+def _from_pdf(data: bytes, stem: str, on_progress=None) -> list[dict]:
     from pypdf import PdfReader
     from pypdf.errors import PdfReadError
 
     try:
         reader = PdfReader(io.BytesIO(data))
-        text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
+        pages = []
+        for i, page in enumerate(reader.pages):
+            pages.append((page.extract_text() or "").strip())
+            if on_progress:
+                on_progress(i + 1, len(reader.pages))
+        text = "\n\n".join(pages)
         info = reader.metadata or {}
     except (PdfReadError, ValueError, KeyError) as e:
         raise ImportErrorBadFile(f"unreadable PDF: {e}") from e
@@ -189,7 +194,7 @@ def _from_epub(data: bytes, stem: str) -> list[dict]:
              "themes": dc("subject"), "text": "\n\n".join(c for c in chapters if c), "source": "epub"}]
 
 
-def parse_upload(filename: str, data: bytes) -> list[dict]:
+def parse_upload(filename: str, data: bytes, on_progress=None) -> list[dict]:
     """Returns normalized drafts. Raises ImportErrorBadFile for unsupported or unreadable files."""
     path = PurePath(filename or "upload")
     ext, stem = path.suffix.lower(), path.stem.replace("_", " ").strip() or "Untitled"
@@ -197,7 +202,7 @@ def parse_upload(filename: str, data: bytes) -> list[dict]:
         raise ImportErrorBadFile(f"unsupported file type '{ext or '?'}' — use PDF, DOCX, EPUB, Markdown, TXT or JSON")
     if not data:
         raise ImportErrorBadFile("the file is empty")
-    raw = {".json": lambda: _from_json(data), ".pdf": lambda: _from_pdf(data, stem),
+    raw = {".json": lambda: _from_json(data), ".pdf": lambda: _from_pdf(data, stem, on_progress),
            ".docx": lambda: _from_docx(data, stem), ".epub": lambda: _from_epub(data, stem)
            }.get(ext, lambda: _from_markdown(data, stem))()
     drafts, errors = [], []

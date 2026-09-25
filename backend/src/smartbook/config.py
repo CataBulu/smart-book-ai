@@ -41,6 +41,7 @@ class Settings:
     max_books: int
     history_messages: int
     max_message_chars: int
+    max_upload_mb: int
     fake_llm: bool
     autoseed: bool
     prices: dict[str, tuple[float, float]]
@@ -71,6 +72,7 @@ def load_settings() -> Settings:
         max_books=int(_env("SMARTBOOK_MAX_BOOKS", "5")),
         history_messages=int(_env("SMARTBOOK_HISTORY_MESSAGES", "8")),
         max_message_chars=int(_env("SMARTBOOK_MAX_MESSAGE_CHARS", "2000")),
+        max_upload_mb=int(_env("SMARTBOOK_MAX_UPLOAD_MB", "200")),
         fake_llm=_flag("SMARTBOOK_FAKE_LLM", False),
         autoseed=_flag("SMARTBOOK_AUTOSEED", True),
         prices={

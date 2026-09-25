@@ -13,8 +13,9 @@ QUERY_INSTRUCTION = ("Instruct: Given a user's request for a book, retrieve libr
                      "that match it\nQuery: ")
 CHUNK_CHARS = 1200
 CHUNK_OVERLAP = 200
-MAX_TEXT_CHUNKS = 300  # ponytail: caps a full novel at ~360K chars indexed; raise if whole-book search matters
-EMBED_BATCH = 32
+MAX_TEXT_CHUNKS = 1000  # ~1.2M chars searchable (typical novels in full); ~4 min on the GPU at the cap
+EMBED_BATCH = 16  # small enough for smooth progress, big enough to keep the GPU busy
+BULK_MIN = 8  # this many passages or more → index on the GPU
 
 
 def as_query(text: str) -> str:
@@ -75,10 +76,16 @@ class Library:
         self.col = client.get_or_create_collection(collection, configuration={"hnsw": {"space": "cosine"}},
                                                    embedding_function=None)
 
-    async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
+    async def embed(self, texts: list[str], on_progress=None) -> tuple[list[list[float]], int]:
+        """Embeds in batches; `on_progress(done, total)` after each batch. Whole books go to the GPU."""
+        bulk = len(texts) >= BULK_MIN
+        if bulk:
+            await self.llm.free_gpu_for_embedding()
         vectors, tokens = [], 0
         for i in range(0, len(texts), EMBED_BATCH):
-            v, t = await self.llm.embed(texts[i:i + EMBED_BATCH])
+            v, t = await self.llm.embed(texts[i:i + EMBED_BATCH], bulk=bulk)
+            if on_progress:
+                on_progress(min(i + EMBED_BATCH, len(texts)), len(texts))
             vectors += v
             tokens += t
         return vectors, tokens
@@ -87,12 +94,12 @@ class Library:
         vectors, tokens = await self.llm.embed([as_query(text)])
         return vectors[0], tokens
 
-    async def add_book(self, book: dict) -> tuple[dict, int]:
+    async def add_book(self, book: dict, on_progress=None) -> tuple[dict, int]:
         """Returns (stored book, embedding tokens). Raises ValueError on duplicates."""
         if self.store.book_exists(book["title"], book["author"]):
             raise ValueError(f'"{book["title"]}" by {book["author"]} is already in the library')
         chunks = build_chunks(book)
-        vectors, tokens = await self.embed(chunks)
+        vectors, tokens = await self.embed(chunks, on_progress)
         stored = self.store.insert_book(book, len(chunks))
         try:
             self.col.add(
@@ -107,13 +114,13 @@ class Library:
             raise
         return stored, tokens
 
-    async def replace_text(self, book_id: str, text: str) -> tuple[dict, int]:
+    async def replace_text(self, book_id: str, text: str, on_progress=None) -> tuple[dict, int]:
         """Attach new full text to a book and rebuild its chunks in the index. Returns (book, embedding tokens)."""
         book = self.store.get_book(book_id)
         if book is None:
             raise KeyError(book_id)
         chunks = build_chunks({**book, "text": text})
-        vectors, tokens = await self.embed(chunks)
+        vectors, tokens = await self.embed(chunks, on_progress)
         self.col.delete(where={"book_id": book_id})
         self.col.add(
             ids=[f"{book_id}:{i}" for i in range(len(chunks))],

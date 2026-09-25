@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Menu } from 'lucide-react'
-import { api, streamChat } from './api.ts'
+import { api, setUploadLimit, streamChat } from './api.ts'
 import { AddBookDialog } from './components/AddBookDialog.tsx'
+import { ProgressWindow, type TrackedJob } from './components/ProgressWindow.tsx'
 import { BookDrawer } from './components/BookDrawer.tsx'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog.tsx'
 import { Composer } from './components/Composer.tsx'
@@ -47,6 +48,7 @@ export default function App() {
   const [painting, setPainting] = useState<Set<string>>(new Set())
   const [attaching, setAttaching] = useState<string | null>(null)
   const [reading, setReading] = useState<Book | null>(null)
+  const [jobs, setJobs] = useState<TrackedJob[]>([])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [context, setContext] = useState({ used: 0, max: 8192 })
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -90,6 +92,7 @@ export default function App() {
       try {
         const h = await api.health()
         setHealth(h)
+        setUploadLimit(h.max_upload_mb)
         if (h.books !== bookCount.current) refreshBooks()
         if (h.seeding || !h.ollama_up) delay = 4000
       } catch {
@@ -275,6 +278,24 @@ export default function App() {
   }
 
   const openBook = (id: string) => { const b = books.find((x) => x.id === id); if (b) setDrawer(b) }
+  /** Runs a long request with a job id and shows its progress in the corner window until it settles. */
+  const track = useCallback(async <T,>(label: string, run: (jobId: string) => Promise<T>): Promise<T> => {
+    const id = crypto.randomUUID()
+    setJobs((js) => [...js, { id, label, state: 'running', startedAt: Date.now() }])
+    const settle = (state: TrackedJob['state']) => {
+      setJobs((js) => js.map((j) => (j.id === id ? { ...j, state } : j)))
+      setTimeout(() => setJobs((js) => js.filter((j) => j.id !== id)), state === 'done' ? 2500 : 6000)
+    }
+    try {
+      const result = await run(id)
+      settle('done')
+      return result
+    } catch (e) {
+      settle('failed')
+      throw e
+    }
+  }, [])
+
   const readBook = (book: Book) => { stopSpeaking(); setDrawer(null); setReading(book) }
 
   const onProgress = useCallback((bookId: string, progress: ReadingProgress) => {
@@ -284,7 +305,7 @@ export default function App() {
   const attachText = async (book: Book, file: File) => {
     setAttaching(book.id)
     try {
-      const updated = await api.attachText(book.id, file)
+      const updated = await track(`Adding the text of “${book.title}”`, (id) => api.attachText(book.id, file, id))
       setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
       setDrawer((d) => (d?.id === updated.id ? updated : d))
       toast(`“${updated.title}” is ready to read`)
@@ -372,6 +393,7 @@ export default function App() {
       {reading && <Reader book={reading} onClose={() => setReading(null)} onProgress={onProgress} />}
       {adding && (
         <AddBookDialog
+          track={track}
           onClose={() => setAdding(false)}
           onAdded={(added, note) => {
             setAdding(false)
@@ -381,6 +403,7 @@ export default function App() {
           }}
         />
       )}
+      <ProgressWindow jobs={jobs} />
       {confirmReq && <ConfirmDialog req={confirmReq} onDone={closeConfirm} />}
       <div className="toasts" aria-live="polite">
         {toasts.map((t) => <div key={t.id} className={`toast ${t.kind === 'error' ? 'error' : ''}`} role="status">{t.text}</div>)}

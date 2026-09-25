@@ -176,14 +176,23 @@ export function Reader({ book, onClose, onProgress }: Props) {
   const approx = done || !total ? total : Math.max(total, Math.round(text.length / (pages[total - 1].end / total)))
   const ofTotal = done ? `${total}` : `~${approx}`
   const canPrev = pos !== null && pos > 0
-  const canNext = pos !== null && pos + step < total
+  const ready = pos !== null && pos + step < total // next spread already laid out
+  const canNext = pos !== null && (ready || !done) // or still being laid out: the turn waits for it
+  const queued = useRef(false) // a 'next' pressed before that page was laid out
 
   const go = useCallback((dir: 'next' | 'prev') => {
     if (flip || pos === null || (dir === 'next' ? !canNext : !canPrev)) return
+    if (dir === 'next' && !ready) { queued.current = true; return } // turn as soon as the page exists
     const to = dir === 'next' ? pos + step : Math.max(0, pos - step)
     if (reduceMotion) setPos(to)
     else setFlip({ dir, from: pos, to })
-  }, [canNext, canPrev, flip, pos, reduceMotion, step])
+  }, [canNext, canPrev, flip, pos, ready, reduceMotion, step])
+
+  useEffect(() => {
+    if (!queued.current || !ready) return
+    queued.current = false
+    go('next')
+  }, [ready, go])
 
   const finishFlip = useCallback(() => {
     if (!flip) return

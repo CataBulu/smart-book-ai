@@ -108,7 +108,18 @@ export interface Health {
   models: Record<string, string>
   books: number
   seeding: boolean
+  max_upload_mb: number
   media: { images: boolean; tts: boolean; stt: boolean }
+}
+
+export interface JobStatus {
+  label: string
+  stage: 'starting' | 'reading' | 'indexing' | 'done' | 'failed'
+  done: number
+  total: number
+  percent: number
+  elapsed_s: number
+  eta_s: number | null
 }
 
 export interface Voice {

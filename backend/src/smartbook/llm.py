@@ -41,10 +41,14 @@ class OllamaClient:
             body["tools"] = tools
         return body
 
-    async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
+    async def embed(self, texts: list[str], bulk: bool = False) -> tuple[list[list[float]], int]:
+        """bulk=True (indexing a whole book): run on the GPU. On the CPU a ~300-token passage takes ~3.5 s on this PC,
+        so a 300-page book took ~17 min; queries stay on the CPU (tiny, ~60 ms) so the chat model keeps the GPU."""
+        # num_gpu must be explicit: Ollama keeps reusing an already-loaded CPU copy otherwise (measured: 13x slower)
+        options = {"num_ctx": 2048, "num_gpu": 999} if bulk else self.embed_options
         try:
-            r = await self.http.post("/api/embed", json={"model": self.embed_model, "input": texts, "keep_alive": "10m",
-                                                         "options": self.embed_options})
+            r = await self.http.post("/api/embed", json={"model": self.embed_model, "input": texts,
+                                                         "keep_alive": "30s" if bulk else "10m", "options": options})
             r.raise_for_status()
         except httpx.HTTPError as e:
             raise LLMError(f"Embedding call failed: {e}") from e
@@ -101,6 +105,15 @@ class OllamaClient:
         except httpx.HTTPError:
             return []
 
+    async def free_gpu_for_embedding(self) -> None:
+        """Unload chat models so the embedder fits on the GPU for a bulk indexing run."""
+        for m in await self.loaded_models():
+            if m.get("name") != self.embed_model and m.get("size_vram"):
+                try:
+                    await self.http.post("/api/generate", json={"model": m["name"], "keep_alive": 0}, timeout=30.0)
+                except httpx.HTTPError:
+                    pass
+
     def unload_all_sync(self) -> None:
         """Evict every loaded model from VRAM (used before the image model takes the GPU)."""
         base = str(self.http.base_url)
@@ -144,8 +157,11 @@ class FakeLLM:
         norm = math.sqrt(sum(v * v for v in vec)) or 1.0
         return [v / norm for v in vec] if any(vec) else [1.0 / math.sqrt(self.dims)] * self.dims
 
-    async def embed(self, texts: list[str]) -> tuple[list[list[float]], int]:
+    async def embed(self, texts: list[str], bulk: bool = False) -> tuple[list[list[float]], int]:
         return [self._vector(t) for t in texts], sum(len(t.split()) for t in texts)
+
+    async def free_gpu_for_embedding(self) -> None:
+        pass
 
     async def chat(self, model: str, messages: list[dict]) -> ChatResult:
         # Used for follow-up rewriting: join every "User:" line in the prompt into one query.

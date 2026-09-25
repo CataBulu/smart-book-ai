@@ -196,3 +196,20 @@ test('reader: attach a text file to a book that has none', async ({ page }) => {
   await page.getByRole('button', { name: 'Read this book' }).click()
   await expect(page.locator('.page-body').filter({ hasText: 'Paragraph 1.' }).first()).toBeVisible()
 })
+
+test('import shows a progress window with a percentage', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByRole('button', { name: 'Add a book' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Add to your library' })
+  await dialog.getByRole('tab', { name: 'Enter details' }).click()
+  await dialog.getByLabel('Title').fill('The Long Road North')
+  await dialog.getByLabel('Author').fill('Mara Quinn')
+  await dialog.getByLabel('What is it about?').fill('A courier crosses a frozen country.')
+  await dialog.getByLabel(/Book text or notes/).fill(
+    Array.from({ length: 300 }, (_, i) => `Paragraph ${i}. The courier walked north through the snow and the dark pines.`).join('\n\n'))
+  await dialog.getByRole('button', { name: 'Add to library' }).click()
+  const job = page.getByTestId('job').filter({ hasText: 'Adding “The Long Road North”' })
+  await expect(job).toBeVisible()
+  await expect(job.getByTestId('job-percent')).toHaveText('100%')
+  await expect(job).toBeHidden({ timeout: 6000 }) // tidies itself away
+})

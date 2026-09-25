@@ -13,7 +13,8 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
 - **Layered moderation before any chat-model call**: L0 validation → L1 regex rules (prompt injection, dangerous
   how-tos, self-harm with crisis resources, hate) → L2 embedding similarity to harmful exemplars.
   The L2 embedding is reused for retrieval, so moderation adds no extra model call.
-- **Multi-format import**: PDF, DOCX, EPUB, Markdown/TXT, JSON (single or bulk), plus JSON export.
+- **Multi-format import**: PDF, DOCX, EPUB, Markdown/TXT, JSON (single or bulk) up to 200 MB, with a live
+  progress window (percentage, pages/passages, time left); whole books are indexed on the GPU.
 - **Token & cost accounting**: every embed, rewrite, chat and tool round is recorded per session and per
   conversation, with configurable cloud-equivalent $/1M-token rates. The usage popover also shows how full the context window is.
 - **Read books in the app**: a two-page reader with a 3D page-turn, adjustable text size, and your place
@@ -63,8 +64,8 @@ turn (and after 90 s idle), and the chat model steps aside while an image is pai
 
 ## Tests
 ```bash
-cd backend && uv run pytest          # 93 unit/API tests (fake LLM, no Ollama needed)
-cd frontend && npx playwright test   # 15 smoke tests (isolated fake-LLM backend on :8001)
+cd backend && uv run pytest          # 98 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 16 smoke tests (isolated fake-LLM backend on :8001)
 ```
 
 ## Configuration

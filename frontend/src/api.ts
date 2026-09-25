@@ -1,5 +1,5 @@
 import type {
-  Book, BookIn, ConversationSummary, HardwareStatus, ReadingProgress, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
+  Book, BookIn, ConversationSummary, HardwareStatus, JobStatus, ReadingProgress, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
 } from './types.ts'
 
 function sessionId(): string {
@@ -17,6 +17,19 @@ function sessionId(): string {
 
 const SESSION = sessionId()
 
+let uploadLimitMb = 200 // replaced by the server's value from /api/health
+export const setUploadLimit = (mb: number) => { uploadLimitMb = mb }
+export const uploadLimit = () => uploadLimitMb
+
+function checkSize(file: File) {
+  if (file.size > uploadLimitMb * 2 ** 20) {
+    throw new Error(`That file is ${Math.round(file.size / 2 ** 20)} MB; the limit is ${uploadLimitMb} MB.`)
+  }
+}
+
+/** Long requests carry a job id; the server reports their progress at /api/jobs/{id}. */
+const job = (jobId?: string): HeadersInit => (jobId ? { 'X-Job-Id': jobId } : {})
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('X-Session-Id', SESSION)
@@ -32,15 +45,18 @@ export const api = {
   models: () => request<ModelInfo[]>('/models'),
   usage: () => request<UsageSummary>('/usage'),
   books: () => request<Book[]>('/books'),
-  addBook: (book: BookIn) => request<Book>('/books', { method: 'POST', body: JSON.stringify(book) }),
-  addBooks: (books: BookIn[]) =>
-    request<{ created: Book[]; errors: string[] }>('/books/bulk', { method: 'POST', body: JSON.stringify({ books }) }),
+  addBook: (book: BookIn, jobId?: string) =>
+    request<Book>('/books', { method: 'POST', body: JSON.stringify(book), headers: job(jobId) }),
+  addBooks: (books: BookIn[], jobId?: string) =>
+    request<{ created: Book[]; errors: string[] }>('/books/bulk', { method: 'POST', body: JSON.stringify({ books }), headers: job(jobId) }),
+  job: (id: string) => request<JobStatus>(`/jobs/${id}`),
   deleteBook: (id: string) => request<{ deleted: boolean }>(`/books/${id}`, { method: 'DELETE' }),
   exportBooks: () => request<BookIn[]>('/books/export'),
-  previewImport: (file: File) => {
+  previewImport: async (file: File, jobId?: string) => {
+    checkSize(file)
     const form = new FormData()
     form.append('file', file)
-    return request<{ drafts: BookIn[] }>('/import/preview', { method: 'POST', body: form })
+    return request<{ drafts: BookIn[] }>('/import/preview', { method: 'POST', body: form, headers: job(jobId) })
   },
   conversations: () => request<ConversationSummary[]>('/conversations'),
   conversation: (id: string) =>
@@ -53,10 +69,11 @@ export const api = {
     request<{ id: string; title: string; author: string; text: string; progress: ReadingProgress | null }>(`/books/${id}/content`),
   saveProgress: (id: string, body: { offset: number; page: number; pages: number | null }, keepalive = false) =>
     request<ReadingProgress>(`/books/${id}/progress`, { method: 'PUT', body: JSON.stringify(body), keepalive }),
-  attachText: (id: string, file: File) => {
+  attachText: async (id: string, file: File, jobId?: string) => {
+    checkSize(file)
     const form = new FormData()
     form.append('file', file)
-    return request<Book>(`/books/${id}/text`, { method: 'POST', body: form })
+    return request<Book>(`/books/${id}/text`, { method: 'POST', body: form, headers: job(jobId) })
   },
   hardware: () => request<HardwareStatus>('/hardware'),
   setImageDevice: (images: 'gpu' | 'cpu') =>

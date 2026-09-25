@@ -1,17 +1,20 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { FileUp, Loader2, X } from 'lucide-react'
-import { api } from '../api.ts'
+import { api, uploadLimit } from '../api.ts'
 import type { Book, BookIn } from '../types.ts'
 
 const ACCEPT = '.pdf,.docx,.epub,.md,.markdown,.txt,.json'
 const list = (s: string) => s.split(',').map((x) => x.trim()).filter(Boolean)
 
+export type Track = <T>(label: string, run: (jobId: string) => Promise<T>) => Promise<T>
+
 interface Props {
+  track: Track
   onClose: () => void
   onAdded: (books: Book[], note?: string) => void
 }
 
-export function AddBookDialog({ onClose, onAdded }: Props) {
+export function AddBookDialog({ track, onClose, onAdded }: Props) {
   const [tab, setTab] = useState<'upload' | 'details'>('upload')
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
@@ -35,7 +38,7 @@ export function AddBookDialog({ onClose, onAdded }: Props) {
   }
 
   const readFile = (file: File) => run(`Reading ${file.name}…`, async () => {
-    const { drafts } = await api.previewImport(file)
+    const { drafts } = await track(`Reading ${file.name}`, (id) => api.previewImport(file, id))
     if (drafts.length > 1) return setBulk(drafts)
     const d = drafts[0]
     setForm({ title: d.title, author: d.author, description: d.description, genres: d.genres.join(', '),
@@ -55,14 +58,16 @@ export function AddBookDialog({ onClose, onAdded }: Props) {
     if (!form.title.trim() || !form.author.trim()) return setError('Please add a title and an author.')
     if (!form.description.trim() && !form.text.trim()) return setError('Add a short description (or the book text) so it can be found.')
     void run('Adding to your library…', async () => {
-      const book = await api.addBook({ title: form.title, author: form.author, description: form.description,
-                                        genres: list(form.genres), themes: list(form.themes), text: form.text })
+      const book = await track(`Adding “${form.title}”`, (id) => api.addBook({
+        title: form.title, author: form.author, description: form.description,
+        genres: list(form.genres), themes: list(form.themes), text: form.text,
+      }, id))
       onAdded([book])
     })
   }
 
   const importAll = () => run(`Adding ${bulk!.length} books…`, async () => {
-    const res = await api.addBooks(bulk!)
+    const res = await track(`Adding ${bulk!.length} books`, (id) => api.addBooks(bulk!, id))
     onAdded(res.created, res.errors.length ? `${res.errors.length} skipped (already in your library)` : undefined)
   })
 
@@ -102,7 +107,7 @@ export function AddBookDialog({ onClose, onAdded }: Props) {
                 >
                   {busy ? <Loader2 size={28} className="spin" /> : <FileUp size={28} />}
                   <p><b>{busy ?? 'Drop a book here, or click to choose'}</b></p>
-                  <small>PDF, Word, EPUB, Markdown, text, or a JSON list of books</small>
+                  <small>PDF, Word, EPUB, Markdown, text, or a JSON list of books · up to {uploadLimit()} MB</small>
                 </button>
                 <input ref={input} type="file" accept={ACCEPT} hidden data-testid="import-input"
                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void readFile(f); e.target.value = '' }} />

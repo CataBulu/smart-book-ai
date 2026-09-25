@@ -27,7 +27,6 @@ from .classics import attach_classics
 from .seed import seed_library
 
 log = logging.getLogger("smartbook")
-MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MEDIA_NAME = re.compile(r"^[\w-]+\.(webp|png)$")
 
@@ -39,6 +38,7 @@ class Services:
     llm: OllamaClient | FakeLLM
     library: Library
     chat: ChatService
+    jobs: dict
     images: media.ImageGenerator | media.FakeImageGenerator
     stt: media.Transcriber | media.FakeTranscriber
     tts: media.Speaker | media.FakeSpeaker
@@ -54,7 +54,7 @@ def build_services(settings: Settings) -> Services:
     fake = settings.fake_llm
     prefs_file = settings.data_dir / "hardware.json"
     device = json.loads(prefs_file.read_text()).get("images", "gpu") if prefs_file.is_file() else "gpu"
-    return Services(settings, store, llm, library, ChatService(settings, store, library, moderator, llm),
+    return Services(settings, store, llm, library, ChatService(settings, store, library, moderator, llm), {},
                     media.FakeImageGenerator() if fake
                     else media.ImageGenerator(device=device, before_gpu=llm.unload_all_sync),
                     media.FakeTranscriber() if fake else media.Transcriber(),
@@ -73,8 +73,56 @@ def create_app(settings: Settings | None = None) -> Starlette:
     settings = settings or load_settings()
     svc = build_services(settings)
 
-    async def add_one(request: Request, raw: dict) -> dict:
-        book, tokens = await svc.library.add_book(normalize(raw, raw.get("source", "manual")))
+    def track(request: Request, label: str):
+        """Progress reporter for a long request. The browser sends X-Job-Id and polls GET /api/jobs/{id}.
+        Returns update(stage, done, total) — a no-op when the client didn't ask for progress."""
+        job_id = request.headers.get("x-job-id", "")[:64]
+        if not job_id:
+            return lambda stage, done, total: None
+        cutoff = time.time() - 600
+        for old in [k for k, j in svc.jobs.items() if j["updated"] < cutoff]:
+            svc.jobs.pop(old, None)
+        job = svc.jobs[job_id] = {"label": label, "stage": "starting", "done": 0, "total": 0,
+                                  "started": time.time(), "stage_started": time.time(), "updated": time.time()}
+
+        def update(stage: str, done: int, total: int) -> None:  # called from worker threads too; dict ops are atomic
+            if stage != job["stage"]:
+                job["stage_started"] = time.time()
+            job.update(stage=stage, done=done, total=total, updated=time.time())
+        return update
+
+    async def job_status(request: Request) -> JSONResponse:
+        job = svc.jobs.get(request.path_params["job_id"])
+        if not job:
+            return error(404, "No such job")
+        now = time.time()
+        done, total = job["done"], job["total"]
+        running = now - job["stage_started"]
+        eta = round(running / done * (total - done)) if done and total and job["stage"] not in ("done", "failed") else None
+        return JSONResponse({"label": job["label"], "stage": job["stage"], "done": done, "total": total,
+                             "percent": round(100 * done / total, 1) if total else 0.0,
+                             "elapsed_s": round(now - job["started"]), "eta_s": eta})
+
+    async def read_upload(request: Request, field: str) -> tuple[str, bytes] | JSONResponse:
+        """The uploaded file's name and bytes, or an error response. Size is checked before reading into memory."""
+        try:
+            form = await request.form(max_files=1)
+        except Exception as e:  # multipart errors surface as several types
+            return error(400, f"Upload failed: {e}")
+        upload = form.get(field)
+        if upload is None or isinstance(upload, str):
+            return error(400, f"Send the file as multipart field '{field}'")
+        if (upload.size or 0) > settings.max_upload_mb * 1024 * 1024:
+            return error(413, f"That file is {upload.size / 2**20:.0f} MB; the limit is {settings.max_upload_mb} MB "
+                              "(SMARTBOOK_MAX_UPLOAD_MB).")
+        return upload.filename or "upload", await upload.read()
+
+    async def add_one(request: Request, raw: dict, progress=None) -> dict:
+        book = normalize(raw, raw.get("source", "manual"))
+        if len(book["text"]) > 5000:
+            await asyncio.to_thread(svc.images.release)  # the GPU is about to index a whole book
+        book, tokens = await svc.library.add_book(
+            book, on_progress=(lambda d, t: progress("indexing", d, t)) if progress else None)
         svc.store.add_usage(session_id(request), None, settings.embed_model, "index", tokens, 0,
                             settings.cost(settings.embed_model, tokens, 0))
         return book
@@ -84,6 +132,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         return JSONResponse({"ok": True, "llm": svc.llm.name, "ollama_up": await svc.llm.is_up(),
                              "models": {**settings.chat_models, "embed": settings.embed_model},
                              "books": svc.store.count_books(), "seeding": svc.seeding,
+                             "max_upload_mb": settings.max_upload_mb,
                              "media": {"images": True, "tts": True, "stt": True} if settings.fake_llm
                              else media.available()})
 
@@ -122,23 +171,24 @@ def create_app(settings: Settings | None = None) -> Starlette:
         book_id = request.path_params["book_id"]
         if not svc.store.get_book(book_id):
             return error(404, "Book not found")
+        got = await read_upload(request, "file")
+        if isinstance(got, JSONResponse):
+            return got
+        progress = track(request, f"Adding the text of “{svc.store.get_book(book_id)['title']}”")
         try:
-            form = await request.form(max_files=1, max_part_size=MAX_UPLOAD_BYTES)
-        except Exception as e:  # multipart errors surface as several types
-            return error(400, f"Upload failed: {e}")
-        upload = form.get("file")
-        if upload is None or isinstance(upload, str):
-            return error(400, "Send the book as multipart field 'file'")
-        try:
-            drafts = await asyncio.to_thread(parse_upload, upload.filename or "upload", await upload.read())
+            drafts = await asyncio.to_thread(parse_upload, *got, lambda d, t: progress("reading", d, t))
         except ImportErrorBadFile as e:
+            progress("failed", 0, 0)
             return error(422, str(e))
         text = next((d["text"] for d in drafts if d["text"].strip()), "")
         if len(text.strip()) < 200:
             return error(422, "That file has no readable book text (scanned PDFs need OCR first).")
+        await asyncio.to_thread(svc.images.release)  # the GPU is about to index a whole book
         try:
-            book, tokens = await svc.library.replace_text(book_id, text)
+            book, tokens = await svc.library.replace_text(book_id, text, lambda d, t: progress("indexing", d, t))
+            progress("done", 1, 1)
         except LLMError as e:
+            progress("failed", 0, 0)
             return error(503, f"Could not index the text — is Ollama running? {e}")
         svc.store.add_usage(session_id(request), None, settings.embed_model, "index", tokens, 0,
                             settings.cost(settings.embed_model, tokens, 0))
@@ -146,7 +196,11 @@ def create_app(settings: Settings | None = None) -> Starlette:
 
     async def create_book(request: Request) -> JSONResponse:
         try:
-            return JSONResponse(await add_one(request, await request.json()), status_code=201)
+            raw = await request.json()
+            progress = track(request, f"Adding “{raw.get('title', 'book')}”" if isinstance(raw, dict) else "Adding a book")
+            book = await add_one(request, raw, progress)
+            progress("done", 1, 1)
+            return JSONResponse(book, status_code=201)
         except json.JSONDecodeError:
             return error(400, "Body must be JSON")
         except ValueError as e:
@@ -162,13 +216,16 @@ def create_app(settings: Settings | None = None) -> Starlette:
         if not isinstance(items, list) or not items:
             return error(400, "Body must be {\"books\": [...]}")
         created, errors = [], []
-        for raw in items:
+        progress = track(request, f"Adding {len(items)} books")
+        for i, raw in enumerate(items):
+            progress("indexing", i, len(items))
             try:
                 created.append(await add_one(request, raw if isinstance(raw, dict) else {}))
             except ValueError as e:
                 errors.append(str(e))
             except LLMError as e:
                 return error(503, f"Could not embed books — is Ollama running? {e}")
+        progress("done", len(items), len(items))
         return JSONResponse({"created": created, "errors": errors}, status_code=201 if created else 400)
 
     async def delete_book(request: Request) -> JSONResponse:
@@ -184,20 +241,16 @@ def create_app(settings: Settings | None = None) -> Starlette:
                             headers={"Content-Disposition": 'attachment; filename="smart-book-library.json"'})
 
     async def import_preview(request: Request) -> JSONResponse:
+        got = await read_upload(request, "file")
+        if isinstance(got, JSONResponse):
+            return got
+        progress = track(request, f"Reading {got[0]}")
         try:
-            form = await request.form(max_files=1, max_part_size=MAX_UPLOAD_BYTES)
-        except Exception as e:  # multipart errors surface as several types
-            return error(400, f"Upload failed: {e}")
-        upload = form.get("file")
-        if upload is None or isinstance(upload, str):
-            return error(400, "Send the document as multipart field 'file'")
-        data = await upload.read()
-        if len(data) > MAX_UPLOAD_BYTES:
-            return error(413, "File is larger than 25 MB")
-        try:
-            drafts = await asyncio.to_thread(parse_upload, upload.filename or "upload", data)
+            drafts = await asyncio.to_thread(parse_upload, *got, lambda d, t: progress("reading", d, t))
         except ImportErrorBadFile as e:
+            progress("failed", 0, 0)
             return error(422, str(e))
+        progress("done", 1, 1)
         return JSONResponse({"drafts": drafts})
 
     async def list_conversations(request: Request) -> JSONResponse:
@@ -380,6 +433,7 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/books/{book_id}/illustrate", illustrate, methods=["POST"]),
         Route("/api/media/{kind}/{name}", media_file),
         Route("/api/voices", voices),
+        Route("/api/jobs/{job_id}", job_status),
         Route("/api/hardware", hardware, methods=["GET", "POST"]),
         Route("/api/tts", tts, methods=["POST"]),
         Route("/api/stt", stt, methods=["POST"]),
