@@ -1,9 +1,9 @@
 import { Loader2 } from 'lucide-react'
 
-// Blue-family palettes: deep navy, cobalt, indigo, teal, slate, midnight, steel, ocean.
+// Cyanotype palettes: sun-print, Prussian, indigo, teal, slate, midnight, steel, ocean.
 const PALETTES: [string, string][] = [
-  ['#1b2a4e', '#0f172f'], ['#1f4fd1', '#15318a'], ['#3b3f9e', '#23255e'], ['#0f6e7a', '#0a4750'],
-  ['#44546f', '#27324a'], ['#14213d', '#0a1224'], ['#2d6a9f', '#1a4368'], ['#1d5c8c', '#0f3858'],
+  ['#1d4f8f', '#12325e'], ['#13345f', '#0a1f3d'], ['#24457e', '#15294f'], ['#175a74', '#0d384b'],
+  ['#3a5577', '#223550'], ['#0f2a4d', '#081729'], ['#2c6aa0', '#18426b'], ['#1f5f8b', '#113d5c'],
 ]
 
 function hash(s: string): number {

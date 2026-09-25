@@ -134,7 +134,7 @@ export function LibraryView({ books, painting, openSeries, onOpenSeries, onOpen,
           <div className="grid" {...shelf.containerProps} data-testid="library-grid">
             {shelf.ordered.map((b, i) => (
               <div key={b.id} className="grid-item" {...shelf.itemProps(b.id)} data-testid="grid-item">
-                <button className="grid-book" onClick={() => onOpen(b)} data-testid="book-card">
+                <button className="grid-book" onClick={() => onOpen(b)} data-testid="book-card" style={{ ['--i' as string]: i }}>
                   <BookCover title={b.title} author={b.author} url={b.cover_url} painting={painting.has(b.id)} />
                   {b.progress && <span className="progress-line" title={`${Math.round(b.progress.percent)}% read`}><i style={{ width: `${b.progress.percent}%` }} /></span>}
                   <p>{b.title}</p>

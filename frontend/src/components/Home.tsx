@@ -14,6 +14,7 @@ const MOODS: [string, string][] = [
 ]
 
 const DAY = Math.floor(Date.now() / 864e5) // shelf order changes daily
+const TODAY = ((d) => `${String(d.getDate()).padStart(2, '0')} ${'JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC'.split(' ')[d.getMonth()]} ${d.getFullYear()}`)(new Date())
 
 function greeting(): string {
   const h = new Date().getHours()
@@ -41,6 +42,7 @@ export function Home({ books, composer, disabled, onAsk, onOpenBook, onRead, onB
 
   return (
     <div className="home">
+      <div className="stamp" aria-hidden="true"><small>Date issued</small><b>{TODAY}</b><small>Smart Book Library</small></div>
       <h1>{greeting()}</h1>
       <p className="lede">What would you like to read next? Describe a mood, a theme, or a book you loved.</p>
       {composer}
@@ -78,8 +80,9 @@ export function Home({ books, composer, disabled, onAsk, onOpenBook, onRead, onB
             <button className="link" onClick={onBrowse}>See all {books.length}</button>
           </div>
           <div className="shelf-row">
-            {shelf.map((b) => (
-              <button key={b.id} className="shelf-book" onClick={() => onOpenBook(b)} title={`${b.title} — ${b.author}`}>
+            {shelf.map((b, i) => (
+              <button key={b.id} className="shelf-book" onClick={() => onOpenBook(b)} title={`${b.title} — ${b.author}`}
+                      style={{ ['--i' as string]: i }}>
                 <BookCover title={b.title} author={b.author} url={b.cover_url} size="sm" />
                 <p>{b.title}</p>
                 <small>{b.author}</small>
