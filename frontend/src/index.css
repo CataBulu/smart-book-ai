@@ -163,9 +163,9 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .bubble p:last-child, .bubble ul:last-child, .bubble ol:last-child { margin-bottom: 0; }
 .bubble ul, .bubble ol { margin: 0 0 10px; padding-left: 20px; }
 .bubble strong { font-weight: 700; }
-.bubble.blocked { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
+.bubble.blocked { border-color: var(--border-strong); background: var(--primary-soft); border-left: 3px solid var(--primary); }
 .bubble.error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); background: var(--danger-soft); color: var(--danger); }
-.blocked-tag { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; color: var(--warn); margin-bottom: 6px; }
+.blocked-tag { display: flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 600; color: var(--primary-text); margin-bottom: 6px; }
 
 .stage { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .spin { animation: spin 1s linear infinite; }
