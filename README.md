@@ -1,0 +1,71 @@
+# Smart Book AI
+
+A full-stack conversational librarian that recommends **English books from your own ChromaDB library**, running
+entirely on your PC with local **Qwen** models served by **Ollama**. No cloud keys, no data leaves the machine.
+
+**Stack:** Python 3.12 · Starlette · ChromaDB · SQLite · Ollama (Qwen3.5 + Qwen3-Embedding) · React 19 · TypeScript · Vite · Playwright
+
+## Features
+- **RAG pipeline**: Qwen3 embeddings with query instructions, cosine semantic search, a **relevance threshold**
+  calibrated on real data, per-book dedupe, and full-text chunk indexing for imported books.
+- **Conversation-aware follow-up rewriting**: "something darker?" becomes a standalone library query.
+- **Function calling**: the chat model calls `search_library` and `get_book_details` against the persistent vector DB.
+- **Layered moderation before any chat-model call**: L0 validation → L1 regex rules (prompt injection, dangerous
+  how-tos, self-harm with crisis resources, hate) → L2 embedding similarity to harmful exemplars.
+  The L2 embedding is reused for retrieval, so moderation adds no extra model call.
+- **Multi-format import**: PDF, DOCX, EPUB, Markdown/TXT, JSON (single or bulk), plus JSON export.
+- **Token & cost accounting**: every embed, rewrite, chat and tool round is recorded per session and per
+  conversation, with configurable cloud-equivalent $/1M-token rates. A context-window ring shows usage.
+- **UI**: streaming answers (SSE), grounded "From your library" source chips with match scores, model picker
+  (Pro/Lite), Listen (TTS) and dictation (browser speech APIs), light/dark blue theme, responsive layout.
+
+## Models (picked for a GTX 1650 SUPER 4 GB / Ryzen 5 2600 / 16 GB)
+| Role | Model | Notes |
+|---|---|---|
+| Smart Book Pro | `qwen3.5:4b` | best answers, ~12 tok/s |
+| Smart Book Lite | `qwen3.5:2b-q4_K_M` | fully on GPU, ~78 tok/s |
+| Embeddings | `qwen3-embedding:0.6b` | runs on CPU so the chat model keeps the GPU |
+
+Measurements and reasoning: [`chunks/02-hardware-and-models.md`](chunks/02-hardware-and-models.md).
+
+## Quick start
+```bash
+# 1. Ollama + models (once)
+ollama pull qwen3.5:4b
+ollama pull qwen3.5:2b-q4_K_M
+ollama pull qwen3-embedding:0.6b
+
+# 2. Build the UI (once, or after frontend changes)
+cd frontend && npm install && npm run build && cd ..
+
+# 3. Run: serves API + UI on http://127.0.0.1:8000 and seeds 60 books on first start
+cd backend && uv run smartbook
+```
+Development with hot reload: run `uv run smartbook` in `backend/` and `npm run dev` in `frontend/`,
+then open http://127.0.0.1:5173.
+
+## Tests
+```bash
+cd backend && uv run pytest          # 75 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 7 smoke tests (isolated fake-LLM backend on :8001)
+```
+
+## Configuration
+Copy `backend/.env.example` to `backend/.env`. Key knobs: `SMARTBOOK_RELEVANCE_MAX_DISTANCE` (0.68),
+`SMARTBOOK_MODERATION_THRESHOLD` (0.60), model names, `SMARTBOOK_NUM_CTX`, and prices.
+
+## Project layout
+```
+backend/src/smartbook/   app (routes, SSE) · chat (pipeline + tools) · library (Chroma, chunking)
+                         moderation · rewrite · importers · llm (Ollama + fake) · db (SQLite) · config · seed
+backend/seed/books.json  60 English seed books
+frontend/src/            App, api (SSE client), components/, index.css (design tokens)
+frontend/e2e/            Playwright smoke tests
+chunks/                  project memory: brief, models, design, architecture, API contract, progress log
+TODO.md                  task list with evidence
+graphify-out/            code knowledge graph (graph.html, GRAPH_REPORT.md)
+```
+
+## Dev tooling
+- **graphify**: code knowledge graph + Claude Code skill/hooks (`graphify update .` after code changes).
+- **ponytail**: "lazy senior dev" Claude Code skills + hooks, vendored in `.claude/` (MIT).
