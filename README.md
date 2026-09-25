@@ -66,8 +66,8 @@ turn (and after 90 s idle), and the chat model steps aside while an image is pai
 
 ## Tests
 ```bash
-cd backend && uv run pytest          # 104 unit/API tests (fake LLM, no Ollama needed)
-cd frontend && npx playwright test   # 18 smoke tests (isolated fake-LLM backend on :8001)
+cd backend && uv run pytest          # 109 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 21 smoke tests (isolated fake-LLM backend on :8001)
 ```
 
 ## Configuration

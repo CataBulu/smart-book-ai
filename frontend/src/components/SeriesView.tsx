@@ -1,5 +1,5 @@
-import { ArrowDown, ArrowLeft, ArrowUp, GripVertical, Plus } from 'lucide-react'
-import { arrayMove, useDragReorder } from '../lib/dragReorder.ts'
+import { ArrowLeft, ArrowRight, GripVertical, Plus } from 'lucide-react'
+import { useSortable } from '../lib/dragReorder.ts'
 import { percentRead, readLabel, seriesPercent, type Series } from '../lib/series.ts'
 import type { Book } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
@@ -35,8 +35,8 @@ interface Props {
 }
 
 export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Props) {
-  const drag = useDragReorder((from, to) => onReorder(arrayMove(series.books, from, to)))
-  const nudge = (i: number, dir: -1 | 1) => onReorder(arrayMove(series.books, i, i + dir))
+  const sortable = useSortable(series.books, (b) => b.id, onReorder)
+  const start = Math.max(1, Math.floor(Math.min(...series.books.map((b) => b.series_index ?? Infinity))) || 1)
   const authors = [...new Set(series.books.map((b) => b.author))].join(', ')
   const withText = series.books.filter((b) => b.text_chars > 0).length
   const pct = seriesPercent(series)
@@ -53,12 +53,12 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Pro
           <button className="btn btn-primary" onClick={onAdd}><Plus size={16} /> Add a book to this series</button>
         </div>
         <div className="progress-line series-total" title={`${Math.round(pct)}% of the series read`}><i style={{ width: `${pct}%` }} /></div>
-        <ol className="series-list" data-testid="series-list">
-          {series.books.map((b) => (
-            <li key={b.id} className="series-item" {...drag(series.books.indexOf(b))} title="Drag to change the reading order">
+        <ol className="series-list" data-testid="series-list" {...sortable.containerProps}>
+          {sortable.ordered.map((b, i) => (
+            <li key={b.id} className="series-item" {...sortable.itemProps(b.id)} title="Drag to change the reading order (or Alt + arrow keys)">
               <GripVertical size={16} className="grip" aria-hidden="true" />
               <button className="series-book" onClick={() => onOpenBook(b)} data-testid="series-book">
-                <span className="series-no">{b.series_index !== null ? `#${b.series_index}` : '–'}</span>
+                <span className="series-no">{sortable.dragging ? `#${start + i}` : b.series_index !== null ? `#${b.series_index}` : '–'}</span>
                 <BookCover title={b.title} author={b.author} url={b.cover_url} size="sm" />
                 <span className="series-book-text">
                   <b>{b.title}</b>
@@ -68,10 +68,10 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Pro
                 </span>
               </button>
               <span className="series-move">
-                <button className="icon-btn" onClick={() => nudge(series.books.indexOf(b), -1)} disabled={series.books.indexOf(b) === 0}
-                        aria-label={`Move ${b.title} earlier`}><ArrowUp size={14} /></button>
-                <button className="icon-btn" onClick={() => nudge(series.books.indexOf(b), 1)}
-                        disabled={series.books.indexOf(b) === series.books.length - 1} aria-label={`Move ${b.title} later`}><ArrowDown size={14} /></button>
+                <button className="icon-btn" onClick={() => sortable.move(b.id, -1)} disabled={i === 0}
+                        aria-label={`Move ${b.title} earlier`} title="Earlier"><ArrowLeft size={14} /></button>
+                <button className="icon-btn" onClick={() => sortable.move(b.id, 1)} disabled={i === series.books.length - 1}
+                        aria-label={`Move ${b.title} later`} title="Later"><ArrowRight size={14} /></button>
               </span>
             </li>
           ))}

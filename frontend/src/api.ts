@@ -48,8 +48,10 @@ export const api = {
   addBook: (book: BookIn, jobId?: string) =>
     request<Book>('/books', { method: 'POST', body: JSON.stringify(book), headers: job(jobId) }),
   addBooks: (books: BookIn[], jobId?: string) =>
-    request<{ created: Book[]; errors: string[] }>('/books/bulk', { method: 'POST', body: JSON.stringify({ books }), headers: job(jobId) }),
+    request<{ created: Book[]; errors: string[]; cancelled?: boolean }>('/books/bulk', { method: 'POST', body: JSON.stringify({ books }), headers: job(jobId) }),
   job: (id: string) => request<JobStatus>(`/jobs/${id}`),
+  cancelJob: (id: string) => request<{ cancelled: boolean }>(`/jobs/${id}/cancel`, { method: 'POST' }),
+  saveOrder: (ids: string[]) => request<{ ok: boolean }>('/books/order', { method: 'PUT', body: JSON.stringify({ ids }) }),
   updateBook: (id: string, patch: Partial<BookIn>) =>
     request<Book>(`/books/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   reindexBook: (id: string, jobId?: string) => request<Book>(`/books/${id}/reindex`, { method: 'POST', headers: job(jobId) }),

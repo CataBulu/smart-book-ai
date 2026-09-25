@@ -26,6 +26,7 @@ export interface Book extends Omit<BookIn, 'text'> {
   created_at: string
   series: string | null
   series_index: number | null
+  position: number
   text_chars: number
   progress: ReadingProgress | null
 }
@@ -120,7 +121,7 @@ export interface Health {
 
 export interface JobStatus {
   label: string
-  stage: 'starting' | 'reading' | 'indexing' | 'done' | 'failed'
+  stage: 'starting' | 'reading' | 'indexing' | 'done' | 'failed' | 'cancelled'
   done: number
   total: number
   percent: number

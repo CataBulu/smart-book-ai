@@ -27,6 +27,10 @@ from .classics import attach_classics
 from .seed import seed_library
 
 log = logging.getLogger("smartbook")
+
+
+class JobCancelled(Exception):
+    """Raised from a progress update after the reader pressed Cancel; stops the work before anything is saved."""
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 MEDIA_NAME = re.compile(r"^[\w-]+\.(webp|png)$")
 
@@ -82,10 +86,13 @@ def create_app(settings: Settings | None = None) -> Starlette:
         cutoff = time.time() - 600
         for old in [k for k, j in svc.jobs.items() if j["updated"] < cutoff]:
             svc.jobs.pop(old, None)
-        job = svc.jobs[job_id] = {"label": label, "stage": "starting", "done": 0, "total": 0,
+        job = svc.jobs[job_id] = {"label": label, "stage": "starting", "done": 0, "total": 0, "cancelled": False,
                                   "started": time.time(), "stage_started": time.time(), "updated": time.time()}
 
         def update(stage: str, done: int, total: int) -> None:  # called from worker threads too; dict ops are atomic
+            if job["cancelled"]:
+                job.update(stage="cancelled", updated=time.time())
+                raise JobCancelled(job_id)
             if stage != job["stage"]:
                 job["stage_started"] = time.time()
             job.update(stage=stage, done=done, total=total, updated=time.time())
@@ -98,10 +105,27 @@ def create_app(settings: Settings | None = None) -> Starlette:
         now = time.time()
         done, total = job["done"], job["total"]
         running = now - job["stage_started"]
-        eta = round(running / done * (total - done)) if done and total and job["stage"] not in ("done", "failed") else None
+        eta = (round(running / done * (total - done)) if done and total
+               and job["stage"] not in ("done", "failed", "cancelled") else None)
         return JSONResponse({"label": job["label"], "stage": job["stage"], "done": done, "total": total,
                              "percent": round(100 * done / total, 1) if total else 0.0,
                              "elapsed_s": round(now - job["started"]), "eta_s": eta})
+
+    async def cancel_job(request: Request) -> JSONResponse:
+        job = svc.jobs.get(request.path_params["job_id"])
+        if not job:
+            return error(404, "No such job")
+        job["cancelled"] = True  # the work stops at its next progress update
+        return JSONResponse({"cancelled": True})
+
+    async def save_order(request: Request) -> JSONResponse:
+        try:
+            ids = (await request.json()).get("ids")
+        except (json.JSONDecodeError, AttributeError):
+            ids = None
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            return error(400, 'Body must be {"ids": [book ids in the new order]}')
+        return JSONResponse({"ok": True, "count": svc.store.set_order(ids)})
 
     async def read_upload(request: Request, field: str) -> tuple[str, bytes] | JSONResponse:
         """The uploaded file's name and bytes, or an error response. Size is checked before reading into memory."""
@@ -215,14 +239,17 @@ def create_app(settings: Settings | None = None) -> Starlette:
             return error(400, "Body must be {\"books\": [...]}")
         if not isinstance(items, list) or not items:
             return error(400, "Body must be {\"books\": [...]}")
-        created, errors = [], []
+        created, errors, cancelled = [], [], False
         progress = track(request, f"Adding {len(items)} books")
         for i, raw in enumerate(items):
-            progress("indexing", i, len(items))
             # fractional progress inside each book, so the bar keeps moving while a big book indexes
             within = (lambda _stage, d, t, i=i: progress("indexing", i + (d / t if t else 0), len(items)))
             try:
+                progress("indexing", i, len(items))
                 created.append(await add_one(request, raw if isinstance(raw, dict) else {}, within))
+            except JobCancelled:
+                cancelled = True
+                break
             except ValueError as e:
                 filled = await fill_existing(raw, within) if "already in the library" in str(e) else None
                 if filled:
@@ -231,6 +258,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
                     errors.append(str(e))
             except LLMError as e:
                 return error(503, f"Could not embed books — is Ollama running? {e}")
+        if cancelled:
+            return JSONResponse({"created": created, "errors": errors, "cancelled": True})
         progress("done", len(items), len(items))
         return JSONResponse({"created": created, "errors": errors}, status_code=201 if created else 400)
 
@@ -491,6 +520,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/media/{kind}/{name}", media_file),
         Route("/api/voices", voices),
         Route("/api/jobs/{job_id}", job_status),
+        Route("/api/jobs/{job_id}/cancel", cancel_job, methods=["POST"]),
+        Route("/api/books/order", save_order, methods=["PUT"]),
         Route("/api/hardware", hardware, methods=["GET", "POST"]),
         Route("/api/tts", tts, methods=["POST"]),
         Route("/api/stt", stt, methods=["POST"]),
@@ -520,7 +551,10 @@ def create_app(settings: Settings | None = None) -> Starlette:
         if task and not task.done():
             task.cancel()
 
-    app = Starlette(routes=routes, lifespan=lifespan)
+    async def on_cancelled(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse({"error": "Cancelled", "cancelled": True}, status_code=409)
+
+    app = Starlette(routes=routes, lifespan=lifespan, exception_handlers={JobCancelled: on_cancelled})
     app.state.services = svc
     return app
 

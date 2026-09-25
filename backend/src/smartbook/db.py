@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS reading_progress (
 );
 """
 
-BOOK_COLUMNS = ("id, title, author, description, genres, themes, source, chunks, cover, series, series_index,"
+BOOK_COLUMNS = ("id, title, author, description, genres, themes, source, chunks, cover, series, series_index, position,"
                 " created_at,"
                 " length(text) AS text_chars")
 
@@ -97,6 +97,11 @@ class Store:
         if "series" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(books)")}:
             self.conn.execute("ALTER TABLE books ADD COLUMN series TEXT")  # added in round 7
             self.conn.execute("ALTER TABLE books ADD COLUMN series_index REAL")
+        if "position" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(books)")}:
+            self.conn.execute("ALTER TABLE books ADD COLUMN position INTEGER")  # round 9: the reader's own order
+            self.conn.execute("UPDATE books SET position = (SELECT count(*) FROM books b WHERE lower(b.title) < "
+                              "lower(books.title) OR (lower(b.title) = lower(books.title) AND b.id < books.id))")
+            self.conn.commit()
         self.lock = threading.Lock()
 
     def _write(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -112,7 +117,8 @@ class Store:
         book_id = new_id()
         self._write(
             "INSERT INTO books (id, title, author, description, genres, themes, text, source, chunks, series,"
-            " series_index, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " series_index, created_at, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+            " (SELECT coalesce(max(position), -1) + 1 FROM books))",  # new books go to the end of "My order"
             (book_id, book["title"], book["author"], book["description"], json.dumps(book["genres"]),
              json.dumps(book["themes"]), book.get("text", ""), book.get("source", "manual"), chunks,
              book.get("series"), book.get("series_index"), now()),
@@ -154,7 +160,16 @@ class Store:
                               (title, author)))
 
     def list_books(self) -> list[dict]:
-        return [_book(r) for r in self._all(f"SELECT {BOOK_COLUMNS} FROM books ORDER BY lower(title)")]
+        return [_book(r) for r in self._all(f"SELECT {BOOK_COLUMNS} FROM books ORDER BY position, lower(title)")]
+
+    def set_order(self, ids: list[str]) -> int:
+        """The reader's own shelf order: `ids` first in that order, any other books after them as they were."""
+        with self.lock, self.conn:
+            rest = [r[0] for r in self.conn.execute("SELECT id FROM books ORDER BY position, lower(title)")
+                    if r[0] not in set(ids)]
+            order = [i for i in dict.fromkeys(ids)] + rest
+            self.conn.executemany("UPDATE books SET position = ? WHERE id = ?", [(n, i) for n, i in enumerate(order)])
+        return len(order)
 
     def update_book(self, book_id: str, fields: dict) -> dict:
         """Update editable details. Raises ValueError if the new title/author clashes with another book."""

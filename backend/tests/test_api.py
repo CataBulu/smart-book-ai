@@ -33,7 +33,7 @@ def test_book_crud_and_export(client, books):
     assert client.post("/api/books", json=books[0]).status_code == 409
     assert client.post("/api/books", json={"author": "x"}).status_code == 400
     listed = client.get("/api/books").json()
-    assert [b["title"] for b in listed] == ["Dune", "Rebecca", "Walden"]
+    assert [b["title"] for b in listed] == ["Walden", "Dune", "Rebecca"]  # "My order": new books go last
     assert listed[0]["chunks"] == 1 and "text" not in listed[0]
 
     export = client.get("/api/books/export")

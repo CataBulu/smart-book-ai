@@ -295,7 +295,7 @@ export default function App() {
       settle('done')
       return result
     } catch (e) {
-      settle('failed')
+      settle((e as Error).message === 'Cancelled' ? 'cancelled' : 'failed')
       throw e
     }
   }, [])
@@ -316,6 +316,17 @@ export default function App() {
       toast(`New reading order saved for ${series}`)
     } catch (e) {
       fail(`Couldn't save the new order: ${(e as Error).message}`)
+      refreshBooks()
+    }
+  }
+  /** The reader's own shelf order: saved as positions, shown immediately. */
+  const reorderLibrary = async (ordered: Book[]) => {
+    const pos = new Map(ordered.map((b, i) => [b.id, i]))
+    setBooks((bs) => bs.map((b) => ({ ...b, position: pos.get(b.id) ?? b.position })))
+    try {
+      await api.saveOrder(ordered.map((b) => b.id))
+    } catch (e) {
+      fail(`Couldn't save your shelf order: ${(e as Error).message}`)
       refreshBooks()
     }
   }
@@ -374,6 +385,7 @@ export default function App() {
             <LibraryView books={books} painting={painting} onOpen={setDrawer} onExport={exportLibrary}
                          openSeries={seriesOpen} onOpenSeries={setSeriesOpen}
                          onReorderSeries={(name, ordered) => void reorderSeries(name, ordered)}
+                         onReorderLibrary={(ordered) => void reorderLibrary(ordered)}
                          onAdd={(preset) => { setAddPreset(preset); setAdding(true) }} />
           </div>
         ) : (

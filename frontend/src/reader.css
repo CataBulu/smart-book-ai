@@ -205,3 +205,33 @@
   .bulk-edit li { grid-template-columns: 16px 26px 1fr auto auto auto; }
   .series-move { opacity: 1; }
 }
+
+/* round 9: staged files, stop buttons, library arranging */
+.dropzone.compact { padding: 16px 20px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.dropzone.compact svg { margin: 0; }
+.staged { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.staged li {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); font-size: 13.5px;
+}
+.staged-icon { color: var(--blue-ink); flex-shrink: 0; }
+.staged-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.staged-size { color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.staged .icon-btn { width: 28px; height: 28px; }
+.job-stop { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: var(--ink-3); }
+.job-stop:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
+.job.cancelled .job-head svg { color: var(--ink-3); }
+.sort { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+.arrange-hint { font-size: 12.5px; color: var(--ink-3); margin: 2px 0 0; }
+.grid-item { position: relative; display: flex; flex-direction: column; align-self: start; border-radius: 8px; }
+.shelf-move {
+  position: absolute; top: 6px; right: 6px; display: flex; gap: 2px; padding: 2px; border-radius: 8px;
+  background: var(--surface); box-shadow: var(--shadow); opacity: 0; transition: opacity 0.12s; z-index: 4;
+}
+.grid-item:hover .shelf-move, .shelf-move:focus-within { opacity: 1; }
+.shelf-move .icon-btn { width: 26px; height: 26px; }
+/* lifted item while dragging; the others glide around it (FLIP in lib/dragReorder.ts) */
+[data-dragging] { opacity: 0.35; }
+.grid-item[data-dragging] .cover { box-shadow: 0 0 0 2px var(--blue); }
+[draggable='true']:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+@media (hover: none) { .shelf-move { opacity: 1; } }

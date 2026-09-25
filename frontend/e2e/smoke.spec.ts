@@ -70,6 +70,8 @@ test('library: add by hand, import Markdown, search', async ({ page }) => {
     name: 'river.md', mimeType: 'text/markdown',
     buffer: Buffer.from('---\ntitle: The Slow River\nauthor: Ana Moss\n---\nA barge drifts through quiet English towns.'),
   })
+  await expect(page.getByTestId('staged-files')).toContainText('river.md')
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(dialog.getByLabel('Title')).toHaveValue('The Slow River')
   await dialog.getByRole('button', { name: 'Add to library' }).click()
   await expect(page.getByTestId('book-count')).toHaveText(String(start + 2))
@@ -227,7 +229,11 @@ test('add a whole series at once, drag files into order, then reorder the series
     name, mimeType: 'text/markdown',
     buffer: Buffer.from(`# ${name.replace('.md', '')}\n\n` + 'The caravan crossed the salt flats at dawn. '.repeat(60)),
   }))
-  await page.getByTestId('series-input').setInputFiles(files)
+  await page.getByTestId('import-input').setInputFiles(files)
+  const staged = page.getByTestId('staged-files').locator('li')
+  await expect(staged).toHaveCount(3)
+  await expect(staged.first()).toContainText('Saga 1.md') // sorted by file name
+  await page.getByRole('button', { name: 'Continue with 3 files' }).click()
   const list = page.getByTestId('bulk-list')
   await expect(list.locator('li')).toHaveCount(3)
   await expect(list.getByLabel('Title 1')).toHaveValue('Saga 1') // sorted by file name
@@ -287,4 +293,55 @@ test('edit details changes the description and puts a book in a series', async (
   await expect(page.getByText('Saved “Rebecca”')).toBeVisible()
   await page.getByRole('button', { name: 'Book 1 in Gothic Classics' }).click()
   await expect(page.getByRole('heading', { name: 'Gothic Classics' })).toBeVisible()
+})
+
+
+test('add dialog: cancel, and see or remove the chosen files before reading them', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByTestId('dialog-cancel').click()
+  await expect(page.getByRole('dialog', { name: /^Add/ })).toBeHidden()
+
+  await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByRole('button', { name: /^A whole series/ }).click()
+  await page.getByLabel('Series name').fill('Tide Books')
+  const file = (name: string) => ({ name, mimeType: 'text/plain', buffer: Buffer.from(`A story called ${name}. `.repeat(40)) })
+  await page.getByTestId('import-input').setInputFiles([file('b.txt'), file('a.txt')])
+  await page.getByTestId('import-input').setInputFiles([file('c.txt'), file('a.txt')]) // adding more skips duplicates
+  const staged = page.getByTestId('staged-files').locator('li')
+  await expect(staged).toHaveCount(3)
+  await page.getByRole('button', { name: 'Remove b.txt' }).click()
+  await expect(staged).toHaveCount(2)
+  await expect(page.getByRole('button', { name: 'Continue with 2 files' })).toBeVisible()
+  await page.getByTestId('dialog-cancel').click()
+  await expect(page.getByRole('dialog', { name: /^Add/ })).toBeHidden()
+  await expect(page.getByTestId('book-count')).not.toHaveText('0')
+})
+
+test('library: drag books into your own order, it is saved, and Sort switches views', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByLabel('Sort books').selectOption('custom')
+  const items = page.getByTestId('grid-item')
+  const titleOf = (i: number) => items.nth(i).locator('p').textContent()
+  const first = await titleOf(0)
+  const third = await titleOf(2)
+  await items.nth(2).dragTo(items.nth(0))
+  await expect(items.nth(0).locator('p')).toHaveText(third!)
+  await expect(items.nth(1).locator('p')).toHaveText(first!)
+  await page.waitForTimeout(400)
+  await page.reload()
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await expect(items.nth(0).locator('p')).toHaveText(third!) // saved on the server
+
+  // the ← → buttons move one place
+  await items.nth(0).hover()
+  await items.nth(0).getByRole('button', { name: `Move ${third} right` }).click()
+  await expect(items.nth(1).locator('p')).toHaveText(third!)
+
+  // other sorts don't lose "My order"; searching turns arranging off
+  await page.getByLabel('Sort books').selectOption('title')
+  await expect(items.nth(0).locator('p')).toHaveText('A Gentleman in Moscow')
+  await page.getByLabel('Search library').fill('dune')
+  await expect(page.getByText('Clear the search and genre filter to rearrange your shelves.')).toBeVisible()
+  await expect(items.first()).toHaveAttribute('draggable', 'false')
 })
