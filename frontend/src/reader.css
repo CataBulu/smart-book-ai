@@ -170,3 +170,38 @@
   .bulk-edit li { grid-template-columns: 26px 1fr auto auto; }
   .bulk-edit li input:nth-of-type(2), .bulk-edit .bulk-size { display: none; }
 }
+
+/* add dialog: one book or a whole series */
+.add-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.choice-card {
+  display: flex; flex-direction: column; gap: 6px; text-align: left; padding: 20px; border-radius: 14px;
+  border: 1px solid var(--line-2); background: var(--sunken); transition: border-color 0.12s, background 0.12s, box-shadow 0.12s;
+}
+.choice-card:hover { border-color: var(--blue); background: var(--blue-soft); box-shadow: var(--shadow); }
+.choice-card svg { color: var(--blue-ink); margin-bottom: 6px; }
+.choice-card b { font-family: var(--serif); font-size: 20px; font-weight: 600; }
+.choice-card span { font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.back-link { justify-self: start; margin-bottom: 4px; }
+.field.narrow { max-width: 220px; }
+.titles-only { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.titles-only summary { cursor: pointer; font-size: 14px; color: var(--ink-2); }
+.titles-only[open] summary { margin-bottom: 10px; }
+.titles-only .field { margin-bottom: 10px; }
+@media (max-width: 860px) { .add-choice { grid-template-columns: 1fr; } }
+
+/* drag to reorder */
+[draggable='true'] { cursor: grab; }
+[draggable='true']:active { cursor: grabbing; }
+.grip { color: var(--ink-3); flex-shrink: 0; }
+[data-dragging] { opacity: 0.4; }
+[data-over='above'] { box-shadow: 0 -3px 0 0 var(--blue); border-radius: 12px; }
+[data-over='below'] { box-shadow: 0 3px 0 0 var(--blue); border-radius: 12px; }
+.bulk-edit li { grid-template-columns: 16px 34px 1.4fr 1fr auto auto auto auto; }
+.series-item { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 6px; }
+.series-move { display: flex; flex-direction: column; opacity: 0; transition: opacity 0.12s; }
+.series-item:hover .series-move, .series-move:focus-within { opacity: 1; }
+.series-move .icon-btn { width: 28px; height: 28px; }
+@media (max-width: 860px) {
+  .bulk-edit li { grid-template-columns: 16px 26px 1fr auto auto auto; }
+  .series-move { opacity: 1; }
+}

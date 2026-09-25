@@ -305,6 +305,20 @@ export default function App() {
     setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
     setDrawer((d) => (d?.id === updated.id ? updated : d))
   }
+  /** Renumber a series in the order the reader dragged it into (starting from its lowest number) and save it. */
+  const reorderSeries = async (series: string, ordered: Book[]) => {
+    const start = Math.max(1, Math.floor(Math.min(...ordered.map((b) => b.series_index ?? Infinity))) || 1)
+    const changed = ordered.map((b, i) => ({ ...b, series_index: start + i })).filter((b, i) => b.series_index !== ordered[i].series_index)
+    if (!changed.length) return
+    setBooks((bs) => bs.map((b) => changed.find((c) => c.id === b.id) ?? b))
+    try {
+      await Promise.all(changed.map((b) => api.updateBook(b.id, { series, series_index: b.series_index })))
+      toast(`New reading order saved for ${series}`)
+    } catch (e) {
+      fail(`Couldn't save the new order: ${(e as Error).message}`)
+      refreshBooks()
+    }
+  }
   const openSeries = (name: string | null) => { setDrawer(null); setView('library'); setSeriesOpen(name) }
 
   const readBook = (book: Book) => { stopSpeaking(); setDrawer(null); setReading(book) }
@@ -359,6 +373,7 @@ export default function App() {
           <div className="scroll">
             <LibraryView books={books} painting={painting} onOpen={setDrawer} onExport={exportLibrary}
                          openSeries={seriesOpen} onOpenSeries={setSeriesOpen}
+                         onReorderSeries={(name, ordered) => void reorderSeries(name, ordered)}
                          onAdd={(preset) => { setAddPreset(preset); setAdding(true) }} />
           </div>
         ) : (
@@ -414,6 +429,7 @@ export default function App() {
       {adding && (
         <AddBookDialog
           track={track} preset={addPreset} seriesNames={seriesNames}
+          nextNumber={(name) => Math.floor(Math.max(0, ...books.filter((b) => b.series === name).map((b) => b.series_index ?? 0))) + 1}
           onClose={() => setAdding(false)}
           onAdded={(added, note) => {
             setAdding(false)

@@ -224,11 +224,30 @@ def create_app(settings: Settings | None = None) -> Starlette:
             try:
                 created.append(await add_one(request, raw if isinstance(raw, dict) else {}, within))
             except ValueError as e:
-                errors.append(str(e))
+                filled = await fill_existing(raw, within) if "already in the library" in str(e) else None
+                if filled:
+                    created.append(filled)
+                else:
+                    errors.append(str(e))
             except LLMError as e:
                 return error(503, f"Could not embed books — is Ollama running? {e}")
         progress("done", len(items), len(items))
         return JSONResponse({"created": created, "errors": errors}, status_code=201 if created else 400)
+
+    async def fill_existing(raw: dict, progress) -> dict | None:
+        """A bulk item matching a book already in the library that has no text yet (e.g. a series entry created from
+        titles) fills that book in — text, and series if given — instead of being skipped as a duplicate."""
+        book = normalize(raw, raw.get("source", "import"))
+        existing = svc.store.find_book_exact(book["title"])
+        if not existing or existing["author"].lower() != book["author"].lower() or existing["text_chars"] or not book["text"]:
+            return None
+        await asyncio.to_thread(svc.images.release)
+        updated, _ = await svc.library.replace_text(existing["id"], book["text"],
+                                                    (lambda d, t: progress("indexing", d, t)) if progress else None)
+        if book["series"]:
+            updated, _ = await svc.library.update_details(existing["id"], {"series": book["series"],
+                                                                            "series_index": book["series_index"]})
+        return updated
 
     async def update_book(request: Request) -> JSONResponse:
         book_id = request.path_params["book_id"]

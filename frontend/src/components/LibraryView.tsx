@@ -13,9 +13,10 @@ interface Props {
   onOpen: (book: Book) => void
   onAdd: (preset?: { series: string; series_index: number; author: string }) => void
   onExport: () => void
+  onReorderSeries: (series: string, books: Book[]) => void
 }
 
-export function LibraryView({ books, painting, openSeries, onOpenSeries, onOpen, onAdd, onExport }: Props) {
+export function LibraryView({ books, painting, openSeries, onOpenSeries, onOpen, onAdd, onExport, onReorderSeries }: Props) {
   const [query, setQuery] = useState('')
   const [genre, setGenre] = useState<string | null>(null)
   const series = useMemo(() => groupSeries(books), [books])
@@ -39,6 +40,7 @@ export function LibraryView({ books, painting, openSeries, onOpenSeries, onOpen,
     const last = current.books.reduce((n, b) => Math.max(n, b.series_index ?? 0), 0)
     return (
       <SeriesView series={current} onBack={() => onOpenSeries(null)} onOpenBook={onOpen}
+                  onReorder={(ordered) => onReorderSeries(current.name, ordered)}
                   onAdd={() => onAdd({ series: current.name, series_index: Math.floor(last) + 1, author: current.books[0].author })} />
     )
   }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
-import { ArrowDown, ArrowUp, FileUp, Loader2, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, BookOpen, FileUp, GripVertical, Library, Loader2, X } from 'lucide-react'
 import { api, uploadLimit } from '../api.ts'
+import { arrayMove, useDragReorder } from '../lib/dragReorder.ts'
 import type { Book, BookIn } from '../types.ts'
 
 const ACCEPT = '.pdf,.docx,.epub,.md,.markdown,.txt,.json'
@@ -19,6 +20,7 @@ interface Props {
   track: Track
   preset?: AddPreset
   seriesNames: string[]
+  nextNumber: (series: string) => number
   onClose: () => void
   onAdded: (books: Book[], note?: string) => void
 }
@@ -31,7 +33,11 @@ interface Bulk {
   skipped: string[]
 }
 
-export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: Props) {
+export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose, onAdded }: Props) {
+  // A series page opens this for one more book of that series; otherwise the reader picks what to add.
+  const [mode, setMode] = useState<'choose' | 'one' | 'series'>(preset ? 'one' : 'choose')
+  const [sForm, setSForm] = useState({ series: '', author: '', start: '1', titles: '' })
+  const seriesInput = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<'upload' | 'details'>('upload')
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
@@ -58,7 +64,7 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
   }
 
   /** One file → review it in the form. Several files (or a JSON list) → review them as a list and add them all. */
-  const readFiles = (picked: File[]) => {
+  const readFiles = (picked: File[], asSeries = false) => {
     const files = [...picked].sort(byName)
     return run(files.length > 1 ? `Reading ${files.length} files…` : `Reading ${files[0].name}…`, async () => {
       const drafts: BookIn[] = []
@@ -73,20 +79,48 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
         }
       }
       if (!drafts.length) throw new Error(skipped.join('\n') || 'No books found in those files.')
-      if (drafts.length === 1 && files.length === 1) {
+      if (!asSeries && drafts.length === 1 && files.length === 1) {
         const d = drafts[0]
         setForm((f) => ({ ...f, title: d.title, author: f.author || d.author, description: d.description,
                           genres: d.genres.join(', '), themes: d.themes.join(', '), text: d.text ?? '' }))
         return setTab('details')
       }
+      if (asSeries) {
+        const author = sForm.author.trim()
+        return setBulk({ drafts: author ? drafts.map((d) => ({ ...d, author })) : drafts, series: sForm.series.trim(),
+                         numbered: true, start: sForm.start, skipped })
+      }
       setBulk({ drafts, series: preset?.series ?? '', numbered: !!preset?.series, start: String(preset?.series_index ?? 1), skipped })
     })
   }
 
-  const onDrop = (e: DragEvent) => {
+  const onDrop = (e: DragEvent, asSeries = false) => {
     e.preventDefault()
     setOver(false)
-    if (e.dataTransfer.files.length) void readFiles([...e.dataTransfer.files])
+    if (asSeries && !seriesReady()) return
+    if (e.dataTransfer.files.length) void readFiles([...e.dataTransfer.files], asSeries)
+  }
+
+  const seriesReady = () => {
+    if (sForm.series.trim()) return true
+    setError('Name the series first, e.g. The Witcher.')
+    return false
+  }
+  const pickSeries = (name: string) =>
+    setSForm((f) => ({ ...f, series: name, start: seriesNames.includes(name.trim()) ? String(nextNumber(name.trim())) : f.start }))
+
+  /** No files yet: one entry per typed title, to fill in later with "Add the book's text". */
+  const fromTitles = () => {
+    if (!seriesReady()) return
+    const titles = sForm.titles.split('\n').map((t) => t.trim()).filter(Boolean)
+    if (!titles.length) return setError('Type at least one title, one per line.')
+    const first = Number(sForm.start) || 1
+    setError(null)
+    setBulk({
+      drafts: titles.map((title, i) => ({ title, author: sForm.author.trim() || 'Unknown', genres: [], themes: [],
+        description: `Book ${first + i} of the ${sForm.series.trim()} series.` })),
+      series: sForm.series.trim(), numbered: true, start: sForm.start, skipped: [],
+    })
   }
 
   const submit = (e: FormEvent) => {
@@ -106,6 +140,7 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
 
   const patchDraft = (i: number, patch: Partial<BookIn>) =>
     setBulk((b) => b && { ...b, drafts: b.drafts.map((d, j) => (j === i ? { ...d, ...patch } : d)) })
+  const dragBulk = useDragReorder((from, to) => setBulk((b) => b && { ...b, drafts: arrayMove(b.drafts, from, to) }))
   const move = (i: number, dir: -1 | 1) => setBulk((b) => {
     if (!b || i + dir < 0 || i + dir >= b.drafts.length) return b
     const drafts = [...b.drafts]
@@ -127,13 +162,14 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
       <div className="overlay" onClick={() => !busy && onClose()} />
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="add-title">
         <div className="dialog-head">
-          <h2 id="add-title">{preset?.series ? `Add to ${preset.series}` : 'Add to your library'}</h2>
+          <h2 id="add-title">{preset?.series ? `Add to ${preset.series}` : mode === 'series' ? 'Add a whole series'
+            : mode === 'one' ? 'Add a book' : 'Add to your library'}</h2>
           <button className="icon-btn" onClick={onClose} disabled={!!busy} aria-label="Close"><X size={18} /></button>
         </div>
 
         {bulk ? (
           <>
-            <p className="muted">Check the titles and authors, put them in reading order, then add them all.</p>
+            <p className="muted">Check the titles and authors, drag them into reading order, then add them all.</p>
             <div className="two series-fields">
               <div className="field"><label htmlFor="b-series">Series <span className="muted">(optional)</span></label>
                 <input id="b-series" list="series-names" value={bulk.series} placeholder="e.g. The Witcher"
@@ -149,7 +185,8 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
             </div>
             <ol className="bulk-edit" data-testid="bulk-list">
               {bulk.drafts.map((d, i) => (
-                <li key={i}>
+                <li key={i} {...dragBulk(i)} title="Drag to reorder">
+                  <GripVertical size={15} className="grip" aria-hidden="true" />
                   <span className="bulk-no">{bulk.series.trim() && bulk.numbered ? `#${(Number(bulk.start) || 1) + i}` : i + 1}</span>
                   <input aria-label={`Title ${i + 1}`} value={d.title} onChange={(e) => patchDraft(i, { title: e.target.value })} />
                   <input aria-label={`Author ${i + 1}`} value={d.author} onChange={(e) => patchDraft(i, { author: e.target.value })} />
@@ -170,10 +207,65 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
               </button>
             </div>
           </>
+        ) : mode === 'choose' ? (
+          <div className="add-choice">
+            <button className="choice-card" onClick={() => setMode('one')}>
+              <BookOpen size={26} />
+              <b>One book</b>
+              <span>Upload a file (PDF, EPUB, Word, text) or type in the details.</span>
+            </button>
+            <button className="choice-card" onClick={() => setMode('series')}>
+              <Library size={26} />
+              <b>A whole series</b>
+              <span>Name the series, then drop in all of its books at once — they're numbered in order.</span>
+            </button>
+          </div>
+        ) : mode === 'series' ? (
+          <div className="form">
+            <button className="link back-link" onClick={() => { setMode('choose'); setError(null) }}><ArrowLeft size={14} /> Back</button>
+            <div className="two">
+              <div className="field"><label htmlFor="s-series">Series name</label>
+                <input id="s-series" list="series-names" value={sForm.series} placeholder="e.g. The Witcher"
+                       onChange={(e) => pickSeries(e.target.value)} />
+                <datalist id="series-names">{seriesNames.map((n) => <option key={n} value={n} />)}</datalist></div>
+              <div className="field"><label htmlFor="s-author">Author</label>
+                <input id="s-author" value={sForm.author} placeholder="e.g. Andrzej Sapkowski"
+                       onChange={(e) => setSForm({ ...sForm, author: e.target.value })} />
+                <small>Leave empty to use the author inside each file.</small></div>
+            </div>
+            <div className="field narrow"><label htmlFor="s-start">Start numbering at</label>
+              <input id="s-start" inputMode="numeric" value={sForm.start} onChange={(e) => setSForm({ ...sForm, start: e.target.value })} />
+              {seriesNames.includes(sForm.series.trim()) && <small>Already in your library — continuing its numbering.</small>}</div>
+            <button
+              className={`dropzone${over ? ' over' : ''}`} disabled={!!busy}
+              onClick={() => seriesReady() && seriesInput.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={(e) => onDrop(e, true)}
+            >
+              {busy ? <Loader2 size={28} className="spin" /> : <FileUp size={28} />}
+              <p><b>{busy ?? 'Drop all the books of the series here, or click to choose'}</b></p>
+              <small>Sorted by file name (Book 1, Book 2 …) — you can reorder them next · up to {uploadLimit()} MB each</small>
+            </button>
+            <input ref={seriesInput} type="file" accept={ACCEPT} multiple hidden data-testid="series-input"
+                   onChange={(e) => { const fs = [...(e.target.files ?? [])]; if (fs.length) void readFiles(fs, true); e.target.value = '' }} />
+            <details className="titles-only">
+              <summary>No files yet? Type the titles instead</summary>
+              <div className="field">
+                <textarea aria-label="Titles, one per line" rows={5} value={sForm.titles}
+                          placeholder={'The Last Wish\nSword of Destiny\nBlood of Elves'}
+                          onChange={(e) => setSForm({ ...sForm, titles: e.target.value })} />
+                <small>Each title becomes an entry you can open later to add its text.</small>
+              </div>
+              <button className="btn" onClick={fromTitles} disabled={!!busy}>Continue with these titles</button>
+            </details>
+            {error && <p className="notice error" style={{ whiteSpace: 'pre-line' }}>{error}</p>}
+          </div>
         ) : (
           <>
+            {!preset && (
+              <button className="link back-link" onClick={() => { setMode('choose'); setError(null) }}><ArrowLeft size={14} /> Back</button>
+            )}
             <div className="tabs" role="tablist">
-              <button role="tab" aria-selected={tab === 'upload'} onClick={() => setTab('upload')}>Upload files</button>
+              <button role="tab" aria-selected={tab === 'upload'} onClick={() => setTab('upload')}>Upload a file</button>
               <button role="tab" aria-selected={tab === 'details'} onClick={() => setTab('details')}>Enter details</button>
             </div>
 
@@ -184,8 +276,8 @@ export function AddBookDialog({ track, preset, seriesNames, onClose, onAdded }: 
                   onDragOver={(e) => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)} onDrop={onDrop}
                 >
                   {busy ? <Loader2 size={28} className="spin" /> : <FileUp size={28} />}
-                  <p><b>{busy ?? 'Drop one or more books here, or click to choose'}</b></p>
-                  <small>PDF, Word, EPUB, Markdown, text, or a JSON list · up to {uploadLimit()} MB each · pick several to add a whole series</small>
+                  <p><b>{busy ?? 'Drop a book here, or click to choose'}</b></p>
+                  <small>PDF, Word, EPUB, Markdown, text, or a JSON list of books · up to {uploadLimit()} MB</small>
                 </button>
                 <input ref={input} type="file" accept={ACCEPT} multiple hidden data-testid="import-input"
                        onChange={(e) => { const fs = [...(e.target.files ?? [])]; if (fs.length) void readFiles(fs); e.target.value = '' }} />

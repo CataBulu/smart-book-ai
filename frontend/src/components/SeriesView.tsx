@@ -1,4 +1,5 @@
-import { ArrowLeft, Plus } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowUp, GripVertical, Plus } from 'lucide-react'
+import { arrayMove, useDragReorder } from '../lib/dragReorder.ts'
 import { percentRead, readLabel, seriesPercent, type Series } from '../lib/series.ts'
 import type { Book } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
@@ -30,9 +31,12 @@ interface Props {
   onBack: () => void
   onOpenBook: (book: Book) => void
   onAdd: () => void
+  onReorder: (books: Book[]) => void
 }
 
-export function SeriesView({ series, onBack, onOpenBook, onAdd }: Props) {
+export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Props) {
+  const drag = useDragReorder((from, to) => onReorder(arrayMove(series.books, from, to)))
+  const nudge = (i: number, dir: -1 | 1) => onReorder(arrayMove(series.books, i, i + dir))
   const authors = [...new Set(series.books.map((b) => b.author))].join(', ')
   const withText = series.books.filter((b) => b.text_chars > 0).length
   const pct = seriesPercent(series)
@@ -51,7 +55,8 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd }: Props) {
         <div className="progress-line series-total" title={`${Math.round(pct)}% of the series read`}><i style={{ width: `${pct}%` }} /></div>
         <ol className="series-list" data-testid="series-list">
           {series.books.map((b) => (
-            <li key={b.id}>
+            <li key={b.id} className="series-item" {...drag(series.books.indexOf(b))} title="Drag to change the reading order">
+              <GripVertical size={16} className="grip" aria-hidden="true" />
               <button className="series-book" onClick={() => onOpenBook(b)} data-testid="series-book">
                 <span className="series-no">{b.series_index !== null ? `#${b.series_index}` : '–'}</span>
                 <BookCover title={b.title} author={b.author} url={b.cover_url} size="sm" />
@@ -62,6 +67,12 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd }: Props) {
                   <small className={b.text_chars ? '' : 'muted'} data-testid="series-read">{readLabel(b)}</small>
                 </span>
               </button>
+              <span className="series-move">
+                <button className="icon-btn" onClick={() => nudge(series.books.indexOf(b), -1)} disabled={series.books.indexOf(b) === 0}
+                        aria-label={`Move ${b.title} earlier`}><ArrowUp size={14} /></button>
+                <button className="icon-btn" onClick={() => nudge(series.books.indexOf(b), 1)}
+                        disabled={series.books.indexOf(b) === series.books.length - 1} aria-label={`Move ${b.title} later`}><ArrowDown size={14} /></button>
+              </span>
             </li>
           ))}
         </ol>

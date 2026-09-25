@@ -53,7 +53,8 @@ test('library: add by hand, import Markdown, search', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Your library' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Add books' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Add to your library' })
+  await page.getByRole('button', { name: /^One book/ }).click()
+  const dialog = page.getByRole('dialog', { name: /^Add/ })
   await dialog.getByRole('tab', { name: 'Enter details' }).click()
   await dialog.getByLabel('Title').fill('The Lantern Keeper')
   await dialog.getByLabel('Author').fill('Ivy Marsh')
@@ -64,6 +65,7 @@ test('library: add by hand, import Markdown, search', async ({ page }) => {
   await expect(page.getByTestId('book-count')).toHaveText(String(start + 1))
 
   await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByRole('button', { name: /^One book/ }).click()
   await page.getByTestId('import-input').setInputFiles({
     name: 'river.md', mimeType: 'text/markdown',
     buffer: Buffer.from('---\ntitle: The Slow River\nauthor: Ana Moss\n---\nA barge drifts through quiet English towns.'),
@@ -200,7 +202,8 @@ test('reader: attach a text file to a book that has none', async ({ page }) => {
 test('import shows a progress window with a percentage', async ({ page }) => {
   await page.getByRole('button', { name: /^Library/ }).click()
   await page.getByRole('button', { name: 'Add books' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Add to your library' })
+  await page.getByRole('button', { name: /^One book/ }).click()
+  const dialog = page.getByRole('dialog', { name: /^Add/ })
   await dialog.getByRole('tab', { name: 'Enter details' }).click()
   await dialog.getByLabel('Title').fill('The Long Road North')
   await dialog.getByLabel('Author').fill('Mara Quinn')
@@ -214,18 +217,23 @@ test('import shows a progress window with a percentage', async ({ page }) => {
   await expect(job).toBeHidden({ timeout: 6000 }) // tidies itself away
 })
 
-test('several files at once become a numbered series with % read per book', async ({ page }) => {
+test('add a whole series at once, drag files into order, then reorder the series page', async ({ page }) => {
   await page.getByRole('button', { name: /^Library/ }).click()
   await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByRole('button', { name: /^A whole series/ }).click()
+  await page.getByLabel('Series name').fill('Salt Saga')
+  await page.getByLabel('Author', { exact: true }).fill('Ada Stone')
   const files = ['Saga 2.md', 'Saga 1.md', 'Saga 3.md'].map((name) => ({
     name, mimeType: 'text/markdown',
-    buffer: Buffer.from(`# ${name.replace('.md', '')}\n*by Ada Stone*\n\n` + 'The caravan crossed the salt flats at dawn. '.repeat(60)),
+    buffer: Buffer.from(`# ${name.replace('.md', '')}\n\n` + 'The caravan crossed the salt flats at dawn. '.repeat(60)),
   }))
-  await page.getByTestId('import-input').setInputFiles(files)
+  await page.getByTestId('series-input').setInputFiles(files)
   const list = page.getByTestId('bulk-list')
   await expect(list.locator('li')).toHaveCount(3)
   await expect(list.getByLabel('Title 1')).toHaveValue('Saga 1') // sorted by file name
-  await page.getByLabel('Series').fill('Salt Saga')
+  await expect(list.getByLabel('Author 1')).toHaveValue('Ada Stone')
+  await list.locator('li').nth(2).dragTo(list.locator('li').nth(0)) // drag "Saga 3" to the top
+  await expect(list.getByLabel('Title 1')).toHaveValue('Saga 3')
   await page.getByRole('button', { name: 'Add all 3' }).click()
   await expect(page.getByText('Added 3 books')).toBeVisible()
 
@@ -233,9 +241,32 @@ test('several files at once become a numbered series with % read per book', asyn
   await page.getByTestId('series-card').filter({ hasText: 'Salt Saga' }).click()
   const books = page.getByTestId('series-book')
   await expect(books).toHaveCount(3)
-  await expect(books.first()).toContainText('#1')
-  await expect(books.first()).toContainText('Saga 1')
+  await expect(books.nth(0)).toContainText('#1Saga 3')
   await expect(books.first().getByTestId('series-read')).toHaveText('Not started · 0%')
+
+  const rows = page.locator('.series-item')
+  await rows.nth(2).dragTo(rows.nth(0)) // drag "Saga 2" (#3) to the front
+  await expect(page.getByText('New reading order saved for Salt Saga')).toBeVisible()
+  await expect(books.nth(0)).toContainText('#1Saga 2')
+  await page.reload()
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByTestId('series-card').filter({ hasText: 'Salt Saga' }).click()
+  await expect(books.nth(0)).toContainText('#1Saga 2') // saved on the server
+  await expect(books.nth(1)).toContainText('#2Saga 3')
+})
+
+test('a series can start as typed titles, without files', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
+  await page.getByRole('button', { name: /^A whole series/ }).click()
+  await page.getByLabel('Series name').fill('Winter Tales')
+  await page.getByText('No files yet? Type the titles instead').click()
+  await page.getByLabel('Titles, one per line').fill('First Frost\nDeep Snow')
+  await page.getByRole('button', { name: 'Continue with these titles' }).click()
+  await page.getByRole('button', { name: 'Add all 2' }).click()
+  await page.getByLabel('Search library').fill('winter tales')
+  await page.getByTestId('series-card').filter({ hasText: 'Winter Tales' }).click()
+  await expect(page.getByTestId('series-read')).toHaveText(['No text yet', 'No text yet'])
 })
 
 test('edit details changes the description and puts a book in a series', async ({ page }) => {

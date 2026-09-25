@@ -72,3 +72,19 @@ def test_series_reaches_chat_sources(client):
         series_index=3)
     r = client.post("/api/chat", json={"message": "witchers elves war north"})
     assert '"series": "The Witcher"' in r.text and '"series_index": 3.0' in r.text
+
+
+def test_bulk_fills_existing_textless_entries_instead_of_skipping(client):
+    entry = add(client, title="Sword of Destiny", series="The Witcher", series_index=2)  # created from a title only
+    assert entry["text_chars"] == 0
+    with_text = add(client, title="Blood of Elves", text=TEXT)  # already has text → still a duplicate
+    r = client.post("/api/books/bulk", json={"books": [
+        {"title": "Sword of Destiny", "author": "andrzej sapkowski", "description": "d", "text": TEXT,
+         "series": "The Witcher", "series_index": 2},
+        {"title": "Blood of Elves", "author": "Andrzej Sapkowski", "description": "d", "text": TEXT},
+    ]})
+    body = r.json()
+    assert [b["id"] for b in body["created"]] == [entry["id"]] and body["created"][0]["text_chars"] == len(TEXT)
+    assert body["created"][0]["series_index"] == 2.0 and body["created"][0]["chunks"] > 1
+    assert len(body["errors"]) == 1 and len(client.get("/api/books").json()) == 2
+    assert with_text["id"] not in [b["id"] for b in body["created"]]
