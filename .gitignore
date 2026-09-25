@@ -30,3 +30,6 @@ backend/.models/
 /*.epub
 /*.mobi
 /*.azw3
+
+# graphify dated backups
+graphify-out/20*/
