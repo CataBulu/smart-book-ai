@@ -1,19 +1,27 @@
-import { useEffect } from 'react'
-import { MessageCircle, Paintbrush, Trash2, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { BookOpen, FileUp, Loader2, MessageCircle, Paintbrush, Trash2, X } from 'lucide-react'
 import type { Book } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
+
+const ACCEPT = '.pdf,.docx,.epub,.md,.markdown,.txt'
 
 interface Props {
   book: Book
   canPaint: boolean
   painting: boolean
+  attaching: boolean
   onClose: () => void
+  onRead: (book: Book) => void
+  onAttach: (book: Book, file: File) => void
   onAsk: (book: Book) => void
   onCover: (book: Book) => void
   onRemove: (book: Book) => void
 }
 
-export function BookDrawer({ book, canPaint, painting, onClose, onAsk, onCover, onRemove }: Props) {
+export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRead, onAttach, onAsk, onCover, onRemove }: Props) {
+  const file = useRef<HTMLInputElement>(null)
+  const p = book.progress
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -38,7 +46,24 @@ export function BookDrawer({ book, canPaint, painting, onClose, onAsk, onCover, 
           </div>
           <p className="desc">{book.description}</p>
           <div className="drawer-actions">
-            <button className="btn btn-primary" onClick={() => onAsk(book)}><MessageCircle size={16} /> Ask about this book</button>
+            {book.text_chars > 0 ? (
+              <>
+                <button className="btn btn-primary" onClick={() => onRead(book)}>
+                  <BookOpen size={16} /> {p ? `Continue reading · page ${p.page}${p.pages ? ` of ${p.pages}` : ''}` : 'Read this book'}
+                </button>
+                {p && <p className="drawer-note">You've read {p.furthest_page} page{p.furthest_page === 1 ? '' : 's'} · {Math.round(p.percent)}% through</p>}
+              </>
+            ) : (
+              <>
+                <input ref={file} type="file" accept={ACCEPT} hidden data-testid="attach-input"
+                       onChange={(e) => { const f = e.target.files?.[0]; if (f) onAttach(book, f); e.target.value = '' }} />
+                <button className="btn btn-primary" onClick={() => file.current?.click()} disabled={attaching}>
+                  {attaching ? <><Loader2 size={16} className="spin" /> Adding the text…</> : <><FileUp size={16} /> Add the book's text to read it</>}
+                </button>
+                <p className="drawer-note">PDF, EPUB, Word, text or Markdown — it opens in the reader and becomes searchable.</p>
+              </>
+            )}
+            <button className="btn" onClick={() => onAsk(book)}><MessageCircle size={16} /> Ask about this book</button>
             {canPaint && (
               <button className="btn" onClick={() => onCover(book)} disabled={painting}>
                 <Paintbrush size={16} /> {painting ? 'Painting a cover…' : book.cover_url ? 'Paint a new cover' : 'Paint a cover'}

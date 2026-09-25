@@ -1,5 +1,5 @@
 import type {
-  Book, BookIn, ConversationSummary, HardwareStatus, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
+  Book, BookIn, ConversationSummary, HardwareStatus, ReadingProgress, Health, ModelId, ModelInfo, StoredMessage, UsageSummary, Voice,
 } from './types.ts'
 
 function sessionId(): string {
@@ -49,6 +49,15 @@ export const api = {
   generateCover: (id: string) => request<Book>(`/books/${id}/cover`, { method: 'POST' }),
   illustrate: (id: string) => request<{ url: string; caption: string }>(`/books/${id}/illustrate`, { method: 'POST' }),
   voices: () => request<Voice[]>('/voices'),
+  bookContent: (id: string) =>
+    request<{ id: string; title: string; author: string; text: string; progress: ReadingProgress | null }>(`/books/${id}/content`),
+  saveProgress: (id: string, body: { offset: number; page: number; pages: number | null }, keepalive = false) =>
+    request<ReadingProgress>(`/books/${id}/progress`, { method: 'PUT', body: JSON.stringify(body), keepalive }),
+  attachText: (id: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return request<Book>(`/books/${id}/text`, { method: 'POST', body: form })
+  },
   hardware: () => request<HardwareStatus>('/hardware'),
   setImageDevice: (images: 'gpu' | 'cpu') =>
     request<HardwareStatus>('/hardware', { method: 'POST', body: JSON.stringify({ images }) }),

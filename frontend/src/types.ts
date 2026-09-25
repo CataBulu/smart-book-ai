@@ -22,6 +22,17 @@ export interface Book extends Omit<BookIn, 'text'> {
   source: string
   cover_url: string | null
   created_at: string
+  text_chars: number
+  progress: ReadingProgress | null
+}
+
+export interface ReadingProgress {
+  char_offset: number
+  page: number
+  pages: number | null
+  furthest_page: number
+  percent: number
+  updated_at: string
 }
 
 export interface Source {

@@ -7,13 +7,14 @@ import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog.t
 import { Composer } from './components/Composer.tsx'
 import { Home } from './components/Home.tsx'
 import { LibraryView } from './components/LibraryView.tsx'
+import { Reader } from './components/Reader.tsx'
 import { Logo } from './components/Logo.tsx'
 import { Answer, Question } from './components/Message.tsx'
 import { Sidebar, type View } from './components/Sidebar.tsx'
 import { stopSpeaking } from './lib/speech.ts'
 import { usePrefs } from './lib/prefs.ts'
 import type {
-  Book, ChatMessage, ConversationSummary, Health, Source, StoredMessage, Usage, UsageSummary, Voice,
+  Book, ChatMessage, ConversationSummary, Health, ReadingProgress, Source, StoredMessage, Usage, UsageSummary, Voice,
 } from './types.ts'
 
 const toChat = (m: StoredMessage): ChatMessage => ({
@@ -44,6 +45,8 @@ export default function App() {
   const [drawer, setDrawer] = useState<Book | null>(null)
   const [adding, setAdding] = useState(false)
   const [painting, setPainting] = useState<Set<string>>(new Set())
+  const [attaching, setAttaching] = useState<string | null>(null)
+  const [reading, setReading] = useState<Book | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [context, setContext] = useState({ used: 0, max: 8192 })
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -272,6 +275,25 @@ export default function App() {
   }
 
   const openBook = (id: string) => { const b = books.find((x) => x.id === id); if (b) setDrawer(b) }
+  const readBook = (book: Book) => { stopSpeaking(); setDrawer(null); setReading(book) }
+
+  const onProgress = useCallback((bookId: string, progress: ReadingProgress) => {
+    setBooks((bs) => bs.map((b) => (b.id === bookId ? { ...b, progress } : b)))
+  }, [])
+
+  const attachText = async (book: Book, file: File) => {
+    setAttaching(book.id)
+    try {
+      const updated = await api.attachText(book.id, file)
+      setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
+      setDrawer((d) => (d?.id === updated.id ? updated : d))
+      toast(`“${updated.title}” is ready to read`)
+    } catch (e) {
+      fail(`Couldn't add that text: ${(e as Error).message}`)
+    } finally {
+      setAttaching(null)
+    }
+  }
   const media = health?.media ?? { images: false, tts: false, stt: false }
   const composerProps = { busy, voiceInput: media.stt, onSend: (t: string) => void send(t),
                           onStop: () => abort.current?.abort(), onError: fail }
@@ -310,7 +332,7 @@ export default function App() {
             <div className="scroll" ref={scroller} onScroll={onScroll}>
               <div className="column">
                 {messages.length === 0 ? (
-                  <Home books={books} disabled={busy} onAsk={(t) => void send(t)} onOpenBook={setDrawer}
+                  <Home books={books} disabled={busy} onAsk={(t) => void send(t)} onOpenBook={setDrawer} onRead={readBook}
                         onBrowse={() => setView('library')} composer={<Composer variant="hero" {...composerProps} />} />
                 ) : (
                   <div className="thread">
@@ -319,6 +341,8 @@ export default function App() {
                         voice: prefs.voice, canSpeak: media.tts, canPaint: media.images, busy,
                         onAsk: (t) => void send(t), onIllustrate: (id, s) => void illustrate(id, s),
                         onOpenBook: openBook, onRetry: retry, onError: fail,
+                        canRead: (id) => (books.find((b) => b.id === id)?.text_chars ?? 0) > 0,
+                        onRead: (id) => { const b = books.find((x) => x.id === id); if (b) readBook(b) },
                       }} />
                     )))}
                   </div>
@@ -341,9 +365,11 @@ export default function App() {
         <BookDrawer
           book={drawer} canPaint={media.images} painting={painting.has(drawer.id)} onClose={() => setDrawer(null)}
           onCover={(b) => void paintCover(b)} onRemove={(b) => void removeBook(b)}
+          attaching={attaching === drawer.id} onRead={readBook} onAttach={(b, f) => void attachText(b, f)}
           onAsk={(b) => { setDrawer(null); newChat(); void send(`Tell me about "${b.title}" by ${b.author}. Who would enjoy it?`) }}
         />
       )}
+      {reading && <Reader book={reading} onClose={() => setReading(null)} onProgress={onProgress} />}
       {adding && (
         <AddBookDialog
           onClose={() => setAdding(false)}

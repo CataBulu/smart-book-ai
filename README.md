@@ -16,6 +16,9 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
 - **Multi-format import**: PDF, DOCX, EPUB, Markdown/TXT, JSON (single or bulk), plus JSON export.
 - **Token & cost accounting**: every embed, rewrite, chat and tool round is recorded per session and per
   conversation, with configurable cloud-equivalent $/1M-token rates. The usage popover also shows how full the context window is.
+- **Read books in the app**: a two-page reader with a 3D page-turn, adjustable text size, and your place
+  remembered (it reopens where you stopped; "Continue reading" on the home screen). Seven public-domain
+  classics ship with full text; add the text of any other book from its page in the library.
 - **Local image generation** (SD-Turbo on CPU): paint book covers and "Illustrate" a recommended book.
 - **Local voice**: Listen reads answers with Kokoro TTS; dictation uses Whisper STT — no audio leaves the PC.
 - **UI**: bookshop-style design (serif titles, real and typeset covers), streaming answers with book cards,
@@ -60,8 +63,8 @@ turn (and after 90 s idle), and the chat model steps aside while an image is pai
 
 ## Tests
 ```bash
-cd backend && uv run pytest          # 85 unit/API tests (fake LLM, no Ollama needed)
-cd frontend && npx playwright test   # 10 smoke tests (isolated fake-LLM backend on :8001)
+cd backend && uv run pytest          # 93 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 15 smoke tests (isolated fake-LLM backend on :8001)
 ```
 
 ## Configuration

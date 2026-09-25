@@ -107,6 +107,24 @@ class Library:
             raise
         return stored, tokens
 
+    async def replace_text(self, book_id: str, text: str) -> tuple[dict, int]:
+        """Attach new full text to a book and rebuild its chunks in the index. Returns (book, embedding tokens)."""
+        book = self.store.get_book(book_id)
+        if book is None:
+            raise KeyError(book_id)
+        chunks = build_chunks({**book, "text": text})
+        vectors, tokens = await self.embed(chunks)
+        self.col.delete(where={"book_id": book_id})
+        self.col.add(
+            ids=[f"{book_id}:{i}" for i in range(len(chunks))],
+            embeddings=vectors,
+            documents=chunks,
+            metadatas=[{"book_id": book_id, "kind": "summary" if i == 0 else "text", "chunk": i}
+                       for i in range(len(chunks))],
+        )
+        self.store.set_text(book_id, text, len(chunks))
+        return self.store.get_book(book_id), tokens
+
     def delete_book(self, book_id: str) -> bool:
         self.col.delete(where={"book_id": book_id})
         return self.store.delete_book(book_id)

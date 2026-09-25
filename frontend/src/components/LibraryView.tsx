@@ -62,6 +62,7 @@ export function LibraryView({ books, painting, onOpen, onAdd, onExport }: Props)
             {shown.map((b) => (
               <button key={b.id} className="grid-book" onClick={() => onOpen(b)} data-testid="book-card">
                 <BookCover title={b.title} author={b.author} url={b.cover_url} painting={painting.has(b.id)} />
+                {b.progress && <span className="progress-line" title={`${Math.round(b.progress.percent)}% read`}><i style={{ width: `${b.progress.percent}%` }} /></span>}
                 <p>{b.title}</p>
                 <small>{b.author}</small>
               </button>

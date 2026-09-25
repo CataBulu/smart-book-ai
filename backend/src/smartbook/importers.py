@@ -25,6 +25,18 @@ def _as_list(value) -> list[str]:
     return [str(v).strip() for v in value if str(v).strip()]
 
 
+def reading_text(text: str) -> str:
+    """Canonical text for reading: paragraphs separated by a blank line, hard-wrapped prose joined into one line.
+    Blocks whose lines are all short (contents, verse, title pages) keep their line breaks.
+    The reader (frontend/src/lib/paginate.ts) applies the same rule, and saved positions are offsets into this."""
+    out = []
+    for block in re.split(r"\n\s*\n", text.replace("\r\n", "\n")):
+        lines = [" ".join(line.split()) for line in block.split("\n") if line.strip()]
+        if lines:
+            out.append("\n".join(lines) if len(lines) > 1 and max(map(len, lines)) < 55 else " ".join(lines))
+    return "\n\n".join(out)
+
+
 def _describe(text: str, limit: int = 420) -> str:
     """First sentences of the text, up to ~limit chars, as a fallback description."""
     flat = " ".join(text.split())
@@ -42,7 +54,7 @@ def normalize(raw: dict, source: str = "import") -> dict:
     title = str(raw.get("title") or "").strip()
     if not title:
         raise ValueError("a book is missing its title")
-    text = str(raw.get("text") or raw.get("content") or raw.get("full_text") or "")[:MAX_TEXT_CHARS]
+    text = reading_text(str(raw.get("text") or raw.get("content") or raw.get("full_text") or ""))[:MAX_TEXT_CHARS]
     description = str(raw.get("description") or raw.get("summary") or raw.get("short_description") or "").strip()
     return {
         "title": title[:300],

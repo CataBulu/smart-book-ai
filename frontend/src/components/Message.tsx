@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
-import { AlertCircle, Check, ChevronDown, Copy, Download, ImageIcon, Info, Loader2, RotateCcw, Square, Volume2 } from 'lucide-react'
+import { AlertCircle, BookOpen, Check, ChevronDown, Copy, Download, ImageIcon, Info, Loader2, RotateCcw, Square, Volume2 } from 'lucide-react'
 import { speak, stopSpeaking, useSpeechState } from '../lib/speech.ts'
 import type { ChatMessage, Source } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
@@ -32,6 +32,8 @@ interface Handlers {
   onAsk: (text: string) => void
   onIllustrate: (messageId: string, source: Source) => void
   onOpenBook: (bookId: string) => void
+  canRead: (bookId: string) => boolean
+  onRead: (bookId: string) => void
   onRetry: () => void
   onError: (message: string) => void
 }
@@ -47,6 +49,9 @@ function Pick({ s, m, h }: { s: Source; m: ChatMessage; h: Handlers }) {
         <div className="by">{s.author}{s.genres.length ? ` · ${s.genres.slice(0, 2).join(', ')}` : ''}</div>
         <p className="blurb">{s.description}</p>
         <div className="actions">
+          {h.canRead(s.book_id) && (
+            <button className="link" onClick={() => h.onRead(s.book_id)}><BookOpen size={13} /> Read</button>
+          )}
           <button className="link" disabled={h.busy} onClick={() => h.onAsk(`Tell me more about "${s.title}" by ${s.author}.`)}>
             Tell me more
           </button>

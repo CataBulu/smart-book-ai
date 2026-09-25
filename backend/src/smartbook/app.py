@@ -23,6 +23,7 @@ from .library import Library
 from .llm import FakeLLM, LLMError, OllamaClient
 from . import media
 from .moderation import SemanticModerator, check_rules
+from .classics import attach_classics
 from .seed import seed_library
 
 log = logging.getLogger("smartbook")
@@ -92,7 +93,56 @@ def create_app(settings: Settings | None = None) -> Starlette:
                              for key, model in settings.chat_models.items()])
 
     async def list_books(request: Request) -> JSONResponse:
-        return JSONResponse(svc.store.list_books())
+        progress = svc.store.progress_map()
+        return JSONResponse([{**b, "progress": progress.get(b["id"])} for b in svc.store.list_books()])
+
+    async def book_content(request: Request) -> JSONResponse:
+        book = svc.store.get_book(request.path_params["book_id"])
+        if not book:
+            return error(404, "Book not found")
+        return JSONResponse({"id": book["id"], "title": book["title"], "author": book["author"],
+                             "text": svc.store.get_text(book["id"]) or "",
+                             "progress": svc.store.progress_map([book["id"]]).get(book["id"])})
+
+    async def save_progress(request: Request) -> JSONResponse:
+        book = svc.store.get_book(request.path_params["book_id"])
+        if not book:
+            return error(404, "Book not found")
+        try:
+            body = await request.json()
+            offset, page = int(body["offset"]), int(body["page"])
+            pages = int(body["pages"]) if body.get("pages") is not None else None
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+            return error(400, 'Body must be {"offset": int, "page": int, "pages": int | null}')
+        if offset < 0 or page < 1 or (pages is not None and pages < page) or offset > book["text_chars"]:
+            return error(400, "Position is outside the book")
+        return JSONResponse(svc.store.save_progress(book["id"], offset, page, pages))
+
+    async def attach_text(request: Request) -> JSONResponse:
+        book_id = request.path_params["book_id"]
+        if not svc.store.get_book(book_id):
+            return error(404, "Book not found")
+        try:
+            form = await request.form(max_files=1, max_part_size=MAX_UPLOAD_BYTES)
+        except Exception as e:  # multipart errors surface as several types
+            return error(400, f"Upload failed: {e}")
+        upload = form.get("file")
+        if upload is None or isinstance(upload, str):
+            return error(400, "Send the book as multipart field 'file'")
+        try:
+            drafts = await asyncio.to_thread(parse_upload, upload.filename or "upload", await upload.read())
+        except ImportErrorBadFile as e:
+            return error(422, str(e))
+        text = next((d["text"] for d in drafts if d["text"].strip()), "")
+        if len(text.strip()) < 200:
+            return error(422, "That file has no readable book text (scanned PDFs need OCR first).")
+        try:
+            book, tokens = await svc.library.replace_text(book_id, text)
+        except LLMError as e:
+            return error(503, f"Could not index the text — is Ollama running? {e}")
+        svc.store.add_usage(session_id(request), None, settings.embed_model, "index", tokens, 0,
+                            settings.cost(settings.embed_model, tokens, 0))
+        return JSONResponse({**book, "progress": None})
 
     async def create_book(request: Request) -> JSONResponse:
         try:
@@ -324,6 +374,9 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/conversations/{conv_id}", delete_conversation, methods=["DELETE"]),
         Route("/api/usage", usage),
         Route("/api/books/{book_id}/cover", generate_cover, methods=["POST"]),
+        Route("/api/books/{book_id}/content", book_content),
+        Route("/api/books/{book_id}/progress", save_progress, methods=["PUT"]),
+        Route("/api/books/{book_id}/text", attach_text, methods=["POST"]),
         Route("/api/books/{book_id}/illustrate", illustrate, methods=["POST"]),
         Route("/api/media/{kind}/{name}", media_file),
         Route("/api/voices", voices),
@@ -344,11 +397,14 @@ def create_app(settings: Settings | None = None) -> Starlette:
                 svc.seeding = True
                 try:
                     log.info("Seeded %d books", await seed_library(svc.library))
+                    log.info("Attached full text to %d public-domain classics", attach_classics(svc.store))
                 except Exception:
                     log.exception("Auto-seed failed (is Ollama running?) — run `uv run python -m smartbook.seed`")
                 finally:
                     svc.seeding = False
             task = asyncio.create_task(run_seed())
+        else:
+            attach_classics(svc.store)  # cheap: only fills classics that have no text yet
         yield
         if task and not task.done():
             task.cancel()

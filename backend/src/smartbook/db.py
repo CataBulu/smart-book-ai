@@ -1,4 +1,4 @@
-"""SQLite persistence: books (source of truth), conversations, messages, usage events."""
+"""SQLite persistence: books (source of truth), conversations, messages, usage events, reading progress."""
 
 import json
 import sqlite3
@@ -51,9 +51,18 @@ CREATE TABLE IF NOT EXISTS usage (
     cost REAL NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reading_progress (
+    book_id TEXT PRIMARY KEY REFERENCES books (id) ON DELETE CASCADE,
+    char_offset INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    pages INTEGER,
+    furthest_page INTEGER NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
-BOOK_COLUMNS = "id, title, author, description, genres, themes, source, chunks, cover, created_at"
+BOOK_COLUMNS = ("id, title, author, description, genres, themes, source, chunks, cover, created_at,"
+                " length(text) AS text_chars")
 
 
 def now() -> str:
@@ -118,6 +127,23 @@ class Store:
                 return _book(rows[0])
         return None
 
+    def find_book_exact(self, title: str) -> dict | None:
+        rows = self._all(f"SELECT {BOOK_COLUMNS} FROM books WHERE lower(title) = lower(?) LIMIT 1", (title,))
+        return _book(rows[0]) if rows else None
+
+    def get_text(self, book_id: str) -> str | None:
+        rows = self._all("SELECT text FROM books WHERE id = ?", (book_id,))
+        return rows[0][0] if rows else None
+
+    def set_text(self, book_id: str, text: str, chunks: int | None = None) -> None:
+        """Replace a book's full text. Saved reading positions point into the old text, so they are dropped."""
+        with self.lock, self.conn:
+            if chunks is None:
+                self.conn.execute("UPDATE books SET text = ? WHERE id = ?", (text, book_id))
+            else:
+                self.conn.execute("UPDATE books SET text = ?, chunks = ? WHERE id = ?", (text, chunks, book_id))
+            self.conn.execute("DELETE FROM reading_progress WHERE book_id = ?", (book_id,))
+
     def book_exists(self, title: str, author: str) -> bool:
         return bool(self._all("SELECT 1 FROM books WHERE lower(title) = lower(?) AND lower(author) = lower(?)",
                               (title, author)))
@@ -137,6 +163,32 @@ class Store:
 
     def count_books(self) -> int:
         return self._all("SELECT count(*) FROM books")[0][0]
+
+    # --- reading progress --------------------------------------------------
+    def save_progress(self, book_id: str, char_offset: int, page: int, pages: int | None) -> dict:
+        """Upsert where the reader is; furthest_page only ever grows ("you've read x pages")."""
+        self._write(
+            "INSERT INTO reading_progress (book_id, char_offset, page, pages, furthest_page, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (book_id) DO UPDATE SET char_offset = excluded.char_offset,"
+            " page = excluded.page, pages = coalesce(excluded.pages, reading_progress.pages),"
+            " furthest_page = max(reading_progress.furthest_page, excluded.furthest_page),"
+            " updated_at = excluded.updated_at",
+            (book_id, char_offset, page, pages, page, now()),
+        )
+        return self.progress_map([book_id])[book_id]
+
+    def progress_map(self, book_ids: list[str] | None = None) -> dict[str, dict]:
+        rows = self._all(
+            "SELECT p.book_id, p.char_offset, p.page, p.pages, p.furthest_page, p.updated_at, length(b.text) AS chars"
+            " FROM reading_progress p JOIN books b ON b.id = p.book_id")
+        out = {}
+        for r in rows:
+            if book_ids is None or r["book_id"] in book_ids:
+                d = dict(r)
+                chars = d.pop("chars") or 1
+                d["percent"] = round(100 * min(d["char_offset"], chars) / chars, 1)
+                out[d.pop("book_id")] = d
+        return out
 
     # --- conversations -----------------------------------------------------
     def create_conversation(self, title: str) -> dict:
