@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Menu } from 'lucide-react'
 import { api, setUploadLimit, streamChat } from './api.ts'
-import { AddBookDialog } from './components/AddBookDialog.tsx'
+import { AddBookDialog, type AddPreset } from './components/AddBookDialog.tsx'
+import { EditBookDialog } from './components/EditBookDialog.tsx'
 import { ProgressWindow, type TrackedJob } from './components/ProgressWindow.tsx'
 import { BookDrawer } from './components/BookDrawer.tsx'
 import { ConfirmDialog, type ConfirmRequest } from './components/ConfirmDialog.tsx'
@@ -49,6 +50,9 @@ export default function App() {
   const [attaching, setAttaching] = useState<string | null>(null)
   const [reading, setReading] = useState<Book | null>(null)
   const [jobs, setJobs] = useState<TrackedJob[]>([])
+  const [editing, setEditing] = useState<Book | null>(null)
+  const [seriesOpen, setSeriesOpen] = useState<string | null>(null)
+  const [addPreset, setAddPreset] = useState<AddPreset | undefined>(undefined)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [context, setContext] = useState({ used: 0, max: 8192 })
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -296,6 +300,13 @@ export default function App() {
     }
   }, [])
 
+  const seriesNames = [...new Set(books.map((b) => b.series).filter((s): s is string => !!s))].sort()
+  const replaceBook = (updated: Book) => {
+    setBooks((bs) => bs.map((b) => (b.id === updated.id ? updated : b)))
+    setDrawer((d) => (d?.id === updated.id ? updated : d))
+  }
+  const openSeries = (name: string | null) => { setDrawer(null); setView('library'); setSeriesOpen(name) }
+
   const readBook = (book: Book) => { stopSpeaking(); setDrawer(null); setReading(book) }
 
   const onProgress = useCallback((bookId: string, progress: ReadingProgress) => {
@@ -331,7 +342,7 @@ export default function App() {
         open={sidebarOpen} view={view} conversations={conversations} activeId={activeId} bookCount={books.length}
         usage={usage} contextPct={Math.min(100, Math.round((context.used / context.max) * 100))} prefs={prefs}
         voices={voices} busy={busy} onPrefs={setPrefs} onNewChat={newChat}
-        onLibrary={() => { setView('library'); setSidebarOpen(false) }}
+        onLibrary={() => { setView('library'); setSeriesOpen(null); setSidebarOpen(false) }}
         onSelect={(id) => void openConversation(id)} onDelete={(id) => void deleteConversation(id)} onError={fail}
       />
       <main className="main">
@@ -346,7 +357,9 @@ export default function App() {
 
         {view === 'library' ? (
           <div className="scroll">
-            <LibraryView books={books} painting={painting} onOpen={setDrawer} onAdd={() => setAdding(true)} onExport={exportLibrary} />
+            <LibraryView books={books} painting={painting} onOpen={setDrawer} onExport={exportLibrary}
+                         openSeries={seriesOpen} onOpenSeries={setSeriesOpen}
+                         onAdd={(preset) => { setAddPreset(preset); setAdding(true) }} />
           </div>
         ) : (
           <>
@@ -387,13 +400,20 @@ export default function App() {
           book={drawer} canPaint={media.images} painting={painting.has(drawer.id)} onClose={() => setDrawer(null)}
           onCover={(b) => void paintCover(b)} onRemove={(b) => void removeBook(b)}
           attaching={attaching === drawer.id} onRead={readBook} onAttach={(b, f) => void attachText(b, f)}
+          onEdit={setEditing} onOpenSeries={openSeries}
           onAsk={(b) => { setDrawer(null); newChat(); void send(`Tell me about "${b.title}" by ${b.author}. Who would enjoy it?`) }}
+        />
+      )}
+      {editing && (
+        <EditBookDialog
+          book={editing} seriesNames={seriesNames} track={track} onClose={() => setEditing(null)}
+          onSaved={(updated, note) => { replaceBook(updated); setEditing(null); toast(note) }}
         />
       )}
       {reading && <Reader book={reading} onClose={() => setReading(null)} onProgress={onProgress} />}
       {adding && (
         <AddBookDialog
-          track={track}
+          track={track} preset={addPreset} seriesNames={seriesNames}
           onClose={() => setAdding(false)}
           onAdded={(added, note) => {
             setAdding(false)

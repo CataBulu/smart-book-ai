@@ -52,7 +52,7 @@ test('library: add by hand, import Markdown, search', async ({ page }) => {
   await page.getByRole('button', { name: /^Library/ }).click()
   await expect(page.getByRole('heading', { name: 'Your library' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Add a book' }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add to your library' })
   await dialog.getByRole('tab', { name: 'Enter details' }).click()
   await dialog.getByLabel('Title').fill('The Lantern Keeper')
@@ -63,7 +63,7 @@ test('library: add by hand, import Markdown, search', async ({ page }) => {
   await expect(page.getByText('Added “The Lantern Keeper” to your library')).toBeVisible()
   await expect(page.getByTestId('book-count')).toHaveText(String(start + 1))
 
-  await page.getByRole('button', { name: 'Add a book' }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
   await page.getByTestId('import-input').setInputFiles({
     name: 'river.md', mimeType: 'text/markdown',
     buffer: Buffer.from('---\ntitle: The Slow River\nauthor: Ana Moss\n---\nA barge drifts through quiet English towns.'),
@@ -199,7 +199,7 @@ test('reader: attach a text file to a book that has none', async ({ page }) => {
 
 test('import shows a progress window with a percentage', async ({ page }) => {
   await page.getByRole('button', { name: /^Library/ }).click()
-  await page.getByRole('button', { name: 'Add a book' }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
   const dialog = page.getByRole('dialog', { name: 'Add to your library' })
   await dialog.getByRole('tab', { name: 'Enter details' }).click()
   await dialog.getByLabel('Title').fill('The Long Road North')
@@ -212,4 +212,48 @@ test('import shows a progress window with a percentage', async ({ page }) => {
   await expect(job).toBeVisible()
   await expect(job.getByTestId('job-percent')).toHaveText('100%')
   await expect(job).toBeHidden({ timeout: 6000 }) // tidies itself away
+})
+
+test('several files at once become a numbered series with % read per book', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByRole('button', { name: 'Add books' }).click()
+  const files = ['Saga 2.md', 'Saga 1.md', 'Saga 3.md'].map((name) => ({
+    name, mimeType: 'text/markdown',
+    buffer: Buffer.from(`# ${name.replace('.md', '')}\n*by Ada Stone*\n\n` + 'The caravan crossed the salt flats at dawn. '.repeat(60)),
+  }))
+  await page.getByTestId('import-input').setInputFiles(files)
+  const list = page.getByTestId('bulk-list')
+  await expect(list.locator('li')).toHaveCount(3)
+  await expect(list.getByLabel('Title 1')).toHaveValue('Saga 1') // sorted by file name
+  await page.getByLabel('Series').fill('Salt Saga')
+  await page.getByRole('button', { name: 'Add all 3' }).click()
+  await expect(page.getByText('Added 3 books')).toBeVisible()
+
+  await page.getByLabel('Search library').fill('salt saga')
+  await page.getByTestId('series-card').filter({ hasText: 'Salt Saga' }).click()
+  const books = page.getByTestId('series-book')
+  await expect(books).toHaveCount(3)
+  await expect(books.first()).toContainText('#1')
+  await expect(books.first()).toContainText('Saga 1')
+  await expect(books.first().getByTestId('series-read')).toHaveText('Not started · 0%')
+})
+
+test('edit details changes the description and puts a book in a series', async ({ page }) => {
+  await page.getByRole('button', { name: /^Library/ }).click()
+  await page.getByTestId('book-card').filter({ hasText: 'Rebecca' }).click()
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit details' })
+  await dialog.getByLabel('What is it about?').fill('A haunting gothic tale of a second wife and a house full of memories.')
+  await dialog.getByLabel('Series', { exact: true }).fill('Gothic Classics')
+  await dialog.getByLabel('Number in series').fill('1')
+  await page.keyboard.press('Escape') // closes only the dialog, not the drawer
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('dialog', { name: 'Rebecca' })).toBeVisible()
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  await dialog.getByLabel('Series', { exact: true }).fill('Gothic Classics')
+  await dialog.getByLabel('Number in series').fill('1')
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByText('Saved “Rebecca”')).toBeVisible()
+  await page.getByRole('button', { name: 'Book 1 in Gothic Classics' }).click()
+  await expect(page.getByRole('heading', { name: 'Gothic Classics' })).toBeVisible()
 })

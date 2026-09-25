@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS reading_progress (
 );
 """
 
-BOOK_COLUMNS = ("id, title, author, description, genres, themes, source, chunks, cover, created_at,"
+BOOK_COLUMNS = ("id, title, author, description, genres, themes, source, chunks, cover, series, series_index,"
+                " created_at,"
                 " length(text) AS text_chars")
 
 
@@ -93,6 +94,9 @@ class Store:
         self.conn.executescript(SCHEMA)
         if "cover" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(books)")}:
             self.conn.execute("ALTER TABLE books ADD COLUMN cover TEXT")  # added in round 2
+        if "series" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(books)")}:
+            self.conn.execute("ALTER TABLE books ADD COLUMN series TEXT")  # added in round 7
+            self.conn.execute("ALTER TABLE books ADD COLUMN series_index REAL")
         self.lock = threading.Lock()
 
     def _write(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
@@ -107,10 +111,11 @@ class Store:
     def insert_book(self, book: dict, chunks: int) -> dict:
         book_id = new_id()
         self._write(
-            "INSERT INTO books (id, title, author, description, genres, themes, text, source, chunks, created_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO books (id, title, author, description, genres, themes, text, source, chunks, series,"
+            " series_index, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (book_id, book["title"], book["author"], book["description"], json.dumps(book["genres"]),
-             json.dumps(book["themes"]), book.get("text", ""), book.get("source", "manual"), chunks, now()),
+             json.dumps(book["themes"]), book.get("text", ""), book.get("source", "manual"), chunks,
+             book.get("series"), book.get("series_index"), now()),
         )
         return self.get_book(book_id)
 
@@ -151,8 +156,24 @@ class Store:
     def list_books(self) -> list[dict]:
         return [_book(r) for r in self._all(f"SELECT {BOOK_COLUMNS} FROM books ORDER BY lower(title)")]
 
+    def update_book(self, book_id: str, fields: dict) -> dict:
+        """Update editable details. Raises ValueError if the new title/author clashes with another book."""
+        cols = {k: (json.dumps(v) if k in ("genres", "themes") else v) for k, v in fields.items()
+                if k in ("title", "author", "description", "genres", "themes", "series", "series_index")}
+        if cols:
+            try:
+                self._write(f"UPDATE books SET {', '.join(f'{k} = ?' for k in cols)} WHERE id = ?",
+                            (*cols.values(), book_id))
+            except sqlite3.IntegrityError as e:
+                raise ValueError("another book with that title and author is already in the library") from e
+        return self.get_book(book_id)
+
+    def set_chunks(self, book_id: str, chunks: int) -> None:
+        self._write("UPDATE books SET chunks = ? WHERE id = ?", (chunks, book_id))
+
     def export_books(self) -> list[dict]:
-        rows = self._all("SELECT title, author, description, genres, themes, text FROM books ORDER BY lower(title)")
+        rows = self._all("SELECT title, author, description, genres, themes, series, series_index, text FROM books"
+                         " ORDER BY lower(title)")
         return [_book(r) for r in rows]
 
     def set_cover(self, book_id: str, filename: str | None) -> None:

@@ -18,7 +18,7 @@ from starlette.staticfiles import StaticFiles
 from .chat import ChatService
 from .config import PROJECT_DIR, Settings, load_settings
 from .db import Store
-from .importers import ImportErrorBadFile, normalize, parse_upload
+from .importers import ImportErrorBadFile, clean_patch, normalize, parse_upload
 from .library import Library
 from .llm import FakeLLM, LLMError, OllamaClient
 from . import media
@@ -219,14 +219,50 @@ def create_app(settings: Settings | None = None) -> Starlette:
         progress = track(request, f"Adding {len(items)} books")
         for i, raw in enumerate(items):
             progress("indexing", i, len(items))
+            # fractional progress inside each book, so the bar keeps moving while a big book indexes
+            within = (lambda _stage, d, t, i=i: progress("indexing", i + (d / t if t else 0), len(items)))
             try:
-                created.append(await add_one(request, raw if isinstance(raw, dict) else {}))
+                created.append(await add_one(request, raw if isinstance(raw, dict) else {}, within))
             except ValueError as e:
                 errors.append(str(e))
             except LLMError as e:
                 return error(503, f"Could not embed books — is Ollama running? {e}")
         progress("done", len(items), len(items))
         return JSONResponse({"created": created, "errors": errors}, status_code=201 if created else 400)
+
+    async def update_book(request: Request) -> JSONResponse:
+        book_id = request.path_params["book_id"]
+        try:
+            fields = clean_patch(await request.json())
+            book, tokens = await svc.library.update_details(book_id, fields)
+        except json.JSONDecodeError:
+            return error(400, "Body must be JSON")
+        except KeyError:
+            return error(404, "Book not found")
+        except ValueError as e:
+            return error(409 if "already in the library" in str(e) else 400, str(e))
+        except LLMError as e:
+            return error(503, f"Saved details could not be indexed — is Ollama running? {e}")
+        svc.store.add_usage(session_id(request), None, settings.embed_model, "index", tokens, 0,
+                            settings.cost(settings.embed_model, tokens, 0))
+        return JSONResponse({**book, "progress": svc.store.progress_map([book_id]).get(book_id)})
+
+    async def reindex_book(request: Request) -> JSONResponse:
+        book_id = request.path_params["book_id"]
+        book = svc.store.get_book(book_id)
+        if not book:
+            return error(404, "Book not found")
+        progress = track(request, f"Re-indexing “{book['title']}”")
+        await asyncio.to_thread(svc.images.release)
+        try:
+            book, tokens = await svc.library.reindex(book_id, lambda d, t: progress("indexing", d, t))
+        except LLMError as e:
+            progress("failed", 0, 0)
+            return error(503, f"Could not index — is Ollama running? {e}")
+        progress("done", 1, 1)
+        svc.store.add_usage(session_id(request), None, settings.embed_model, "index", tokens, 0,
+                            settings.cost(settings.embed_model, tokens, 0))
+        return JSONResponse({**book, "progress": svc.store.progress_map([book_id]).get(book_id)})
 
     async def delete_book(request: Request) -> JSONResponse:
         book = svc.store.get_book(request.path_params["book_id"])
@@ -421,6 +457,8 @@ def create_app(settings: Settings | None = None) -> Starlette:
         Route("/api/books/bulk", bulk_books, methods=["POST"]),
         Route("/api/books/export", export_books),
         Route("/api/books/{book_id}", delete_book, methods=["DELETE"]),
+        Route("/api/books/{book_id}", update_book, methods=["PATCH"]),
+        Route("/api/books/{book_id}/reindex", reindex_book, methods=["POST"]),
         Route("/api/import/preview", import_preview, methods=["POST"]),
         Route("/api/conversations", list_conversations),
         Route("/api/conversations/{conv_id}", get_conversation),

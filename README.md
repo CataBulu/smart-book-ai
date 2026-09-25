@@ -20,6 +20,8 @@ entirely on your PC with local **Qwen** models served by **Ollama**. No cloud ke
 - **Read books in the app**: a two-page reader with a 3D page-turn, adjustable text size, and your place
   remembered (it reopens where you stopped; "Continue reading" on the home screen). Seven public-domain
   classics ship with full text; add the text of any other book from its page in the library.
+- **Series**: group books into series (e.g. The Witcher #1–#8), see % read per book, add several files at once
+  and number them in order; edit any book's details.
 - **Local image generation** (SD-Turbo on CPU): paint book covers and "Illustrate" a recommended book.
 - **Local voice**: Listen reads answers with Kokoro TTS; dictation uses Whisper STT — no audio leaves the PC.
 - **UI**: bookshop-style design (serif titles, real and typeset covers), streaming answers with book cards,
@@ -64,8 +66,8 @@ turn (and after 90 s idle), and the chat model steps aside while an image is pai
 
 ## Tests
 ```bash
-cd backend && uv run pytest          # 98 unit/API tests (fake LLM, no Ollama needed)
-cd frontend && npx playwright test   # 16 smoke tests (isolated fake-LLM backend on :8001)
+cd backend && uv run pytest          # 104 unit/API tests (fake LLM, no Ollama needed)
+cd frontend && npx playwright test   # 18 smoke tests (isolated fake-LLM backend on :8001)
 ```
 
 ## Configuration

@@ -50,6 +50,9 @@ export const api = {
   addBooks: (books: BookIn[], jobId?: string) =>
     request<{ created: Book[]; errors: string[] }>('/books/bulk', { method: 'POST', body: JSON.stringify({ books }), headers: job(jobId) }),
   job: (id: string) => request<JobStatus>(`/jobs/${id}`),
+  updateBook: (id: string, patch: Partial<BookIn>) =>
+    request<Book>(`/books/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  reindexBook: (id: string, jobId?: string) => request<Book>(`/books/${id}/reindex`, { method: 'POST', headers: job(jobId) }),
   deleteBook: (id: string) => request<{ deleted: boolean }>(`/books/${id}`, { method: 'DELETE' }),
   exportBooks: () => request<BookIn[]>('/books/export'),
   previewImport: async (file: File, jobId?: string) => {

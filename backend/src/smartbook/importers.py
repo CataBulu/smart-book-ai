@@ -47,6 +47,36 @@ def _describe(text: str, limit: int = 420) -> str:
     return (cut[:end + 1] if end > limit // 3 else cut.rstrip() + "…")
 
 
+def _series(raw: dict) -> tuple[str | None, float | None]:
+    name = str(raw.get("series") or "").strip()[:200] or None
+    idx = raw.get("series_index", raw.get("series_number"))
+    try:
+        number = float(idx) if idx not in (None, "") else None
+    except (TypeError, ValueError):
+        number = None
+    return name, (number if name else None)
+
+
+def clean_patch(raw: dict) -> dict:
+    """Validated subset of editable fields for PATCH /books/{id}. Raises ValueError on bad input."""
+    if not isinstance(raw, dict):
+        raise ValueError("body must be a JSON object")
+    out: dict = {}
+    for key, limit in (("title", 300), ("author", 200), ("description", 4000)):
+        if key in raw:
+            value = str(raw[key] or "").strip()
+            if not value:
+                raise ValueError(f"{key} can't be empty")
+            out[key] = value[:limit]
+    if "genres" in raw:
+        out["genres"] = _as_list(raw["genres"])[:10]
+    if "themes" in raw:
+        out["themes"] = _as_list(raw["themes"])[:20]
+    if "series" in raw or "series_index" in raw:
+        out["series"], out["series_index"] = _series(raw)
+    return out
+
+
 def normalize(raw: dict, source: str = "import") -> dict:
     """Map loose field names onto BookIn and validate. Raises ValueError when unusable."""
     if not isinstance(raw, dict):
@@ -64,6 +94,7 @@ def normalize(raw: dict, source: str = "import") -> dict:
         "themes": _as_list(raw.get("themes") or raw.get("tags") or raw.get("subjects"))[:20],
         "text": text,
         "source": source,
+        **dict(zip(("series", "series_index"), _series(raw))),
     }
 
 

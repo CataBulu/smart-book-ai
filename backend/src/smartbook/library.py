@@ -24,6 +24,9 @@ def as_query(text: str) -> str:
 
 def summary_document(book: dict) -> str:
     parts = [f"{book['title']} by {book['author']}."]
+    if book.get("series"):
+        n = book.get("series_index")
+        parts.append(f"Series: {book['series']}" + (f", book {n:g}" if n is not None else "") + ".")
     if book.get("genres"):
         parts.append("Genres: " + ", ".join(book["genres"]) + ".")
     if book.get("themes"):
@@ -121,6 +124,33 @@ class Library:
             raise KeyError(book_id)
         chunks = build_chunks({**book, "text": text})
         vectors, tokens = await self.embed(chunks, on_progress)
+        self._write_chunks(book_id, chunks, vectors)
+        self.store.set_text(book_id, text, len(chunks))
+        return self.store.get_book(book_id), tokens
+
+    async def reindex(self, book_id: str, on_progress=None) -> tuple[dict, int]:
+        """Rebuild a book's index from its stored text (e.g. after the passage cap was raised). Keeps progress."""
+        book = self.store.get_book(book_id)
+        if book is None:
+            raise KeyError(book_id)
+        chunks = build_chunks({**book, "text": self.store.get_text(book_id) or ""})
+        vectors, tokens = await self.embed(chunks, on_progress)
+        self._write_chunks(book_id, chunks, vectors)
+        self.store.set_chunks(book_id, len(chunks))
+        return self.store.get_book(book_id), tokens
+
+    async def update_details(self, book_id: str, fields: dict) -> tuple[dict, int]:
+        """Edit title/author/description/genres/themes/series and re-embed only the summary card (chunk 0)."""
+        if self.store.get_book(book_id) is None:
+            raise KeyError(book_id)
+        book = self.store.update_book(book_id, fields)
+        doc = summary_document(book)
+        vectors, tokens = await self.embed([doc])
+        self.col.upsert(ids=[f"{book_id}:0"], embeddings=vectors, documents=[doc],
+                        metadatas=[{"book_id": book_id, "kind": "summary", "chunk": 0}])
+        return book, tokens
+
+    def _write_chunks(self, book_id: str, chunks: list[str], vectors: list[list[float]]) -> None:
         self.col.delete(where={"book_id": book_id})
         self.col.add(
             ids=[f"{book_id}:{i}" for i in range(len(chunks))],
@@ -129,8 +159,6 @@ class Library:
             metadatas=[{"book_id": book_id, "kind": "summary" if i == 0 else "text", "chunk": i}
                        for i in range(len(chunks))],
         )
-        self.store.set_text(book_id, text, len(chunks))
-        return self.store.get_book(book_id), tokens
 
     def delete_book(self, book_id: str) -> bool:
         self.col.delete(where={"book_id": book_id})

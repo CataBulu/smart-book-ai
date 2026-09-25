@@ -14,6 +14,8 @@ export interface BookIn {
   genres: string[]
   themes: string[]
   text?: string
+  series?: string | null
+  series_index?: number | null
 }
 
 export interface Book extends Omit<BookIn, 'text'> {
@@ -22,6 +24,8 @@ export interface Book extends Omit<BookIn, 'text'> {
   source: string
   cover_url: string | null
   created_at: string
+  series: string | null
+  series_index: number | null
   text_chars: number
   progress: ReadingProgress | null
 }
@@ -43,6 +47,8 @@ export interface Source {
   themes: string[]
   description: string
   cover_url?: string | null
+  series?: string | null
+  series_index?: number | null
   score: number | null
   kind: 'summary' | 'text'
   cited?: boolean

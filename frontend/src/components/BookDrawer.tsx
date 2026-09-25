@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { BookOpen, FileUp, Loader2, MessageCircle, Paintbrush, Trash2, X } from 'lucide-react'
+import { BookOpen, FileUp, Library, Loader2, MessageCircle, Paintbrush, Pencil, Trash2, X } from 'lucide-react'
 import type { Book } from '../types.ts'
 import { BookCover } from './BookCover.tsx'
 
@@ -16,9 +16,12 @@ interface Props {
   onAsk: (book: Book) => void
   onCover: (book: Book) => void
   onRemove: (book: Book) => void
+  onEdit: (book: Book) => void
+  onOpenSeries: (name: string) => void
 }
 
-export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRead, onAttach, onAsk, onCover, onRemove }: Props) {
+export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRead, onAttach, onAsk, onCover, onRemove, onEdit,
+  onOpenSeries }: Props) {
   const file = useRef<HTMLInputElement>(null)
   const p = book.progress
 
@@ -41,6 +44,11 @@ export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRea
           </div>
           <h2>{book.title}</h2>
           <div className="by">{book.author}</div>
+          {book.series && (
+            <button className="link series-link" onClick={() => onOpenSeries(book.series!)}>
+              <Library size={13} /> {book.series_index !== null ? `Book ${book.series_index} in ` : 'Part of '}{book.series}
+            </button>
+          )}
           <div className="tags">
             {[...book.genres, ...book.themes.slice(0, 5)].map((t) => <span key={t} className="tag">{t}</span>)}
           </div>
@@ -64,6 +72,7 @@ export function BookDrawer({ book, canPaint, painting, attaching, onClose, onRea
               </>
             )}
             <button className="btn" onClick={() => onAsk(book)}><MessageCircle size={16} /> Ask about this book</button>
+            <button className="btn" onClick={() => onEdit(book)}><Pencil size={16} /> Edit details</button>
             {canPaint && (
               <button className="btn" onClick={() => onCover(book)} disabled={painting}>
                 <Paintbrush size={16} /> {painting ? 'Painting a cover…' : book.cover_url ? 'Paint a new cover' : 'Paint a cover'}

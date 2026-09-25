@@ -77,7 +77,8 @@ class ChatService:
             if book:  # skip index entries whose book row vanished
                 out.append({"book_id": book["id"], "title": book["title"], "author": book["author"],
                             "genres": book["genres"], "themes": book["themes"], "description": book["description"],
-                            "cover_url": book["cover_url"], "score": hit.score, "kind": hit.kind,
+                            "cover_url": book["cover_url"], "series": book["series"],
+                            "series_index": book["series_index"], "score": hit.score, "kind": hit.kind,
                             "snippet": hit.snippet})
         return out
 
@@ -85,8 +86,10 @@ class ChatService:
     def _format_books(sources: list[dict]) -> str:
         lines = []
         for i, b in enumerate(sources, 1):
+            series = f' | series: {b["series"]}' + (f' #{b["series_index"]:g}' if b.get("series_index") is not None else '') \
+                if b.get("series") else ''
             lines.append(f'{i}. "{b["title"]}" by {b["author"]} — {", ".join(b["genres"]) or "Unclassified"}'
-                         f' | themes: {", ".join(b["themes"]) or "n/a"} | relevance {b["score"]:.2f}')
+                         f' | themes: {", ".join(b["themes"]) or "n/a"}{series} | relevance {b["score"]:.2f}')
             lines.append(f"   {b['description']}")
             if b["kind"] == "text":
                 lines.append(f"   Matching excerpt: {' '.join(b['snippet'].split())[:500]}")
@@ -121,7 +124,8 @@ class ChatService:
             details = {k: book[k] for k in ("title", "author", "genres", "themes", "description")}
             source = {"book_id": book["id"], "title": book["title"], "author": book["author"],
                       "genres": book["genres"], "themes": book["themes"], "description": book["description"],
-                      "cover_url": book["cover_url"], "score": None, "kind": "summary", "snippet": ""}
+                      "cover_url": book["cover_url"], "series": book["series"], "series_index": book["series_index"],
+                      "score": None, "kind": "summary", "snippet": ""}
             return json.dumps(details, ensure_ascii=False), [source]
         return f"Unknown tool {name}.", []
 
