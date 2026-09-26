@@ -2974,20 +2974,14 @@ name = "smartbook"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "accelerate" },
     { name = "chromadb" },
-    { name = "diffusers" },
-    { name = "faster-whisper" },
     { name = "httpx" },
-    { name = "kokoro-onnx" },
     { name = "pillow" },
     { name = "psutil" },
     { name = "pypdf" },
     { name = "python-docx" },
     { name = "python-multipart" },
     { name = "starlette" },
-    { name = "torch" },
-    { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -2996,23 +2990,25 @@ dev = [
     { name = "httpx2" },
     { name = "pytest" },
 ]
+media = [
+    { name = "accelerate" },
+    { name = "diffusers" },
+    { name = "faster-whisper" },
+    { name = "kokoro-onnx" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = ">=1.15.0" },
     { name = "chromadb", specifier = ">=1.5.9" },
-    { name = "diffusers", specifier = ">=0.40.0" },
-    { name = "faster-whisper", specifier = ">=1.2.1" },
     { name = "httpx", specifier = ">=0.28.1" },
-    { name = "kokoro-onnx", specifier = ">=0.6.1" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "psutil", specifier = ">=7.2.2" },
     { name = "pypdf", specifier = ">=6.19.0" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "starlette", specifier = ">=1.7.0" },
-    { name = "torch", specifier = ">=2.14.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "transformers", specifier = ">=5.17.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
 ]
 
@@ -3020,6 +3016,14 @@ requires-dist = [
 dev = [
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "pytest", specifier = ">=9.1.1" },
+]
+media = [
+    { name = "accelerate", specifier = ">=1.15.0" },
+    { name = "diffusers", specifier = ">=0.40.0" },
+    { name = "faster-whisper", specifier = ">=1.2.1" },
+    { name = "kokoro-onnx", specifier = ">=0.6.1" },
+    { name = "torch", specifier = ">=2.14.0", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "transformers", specifier = ">=5.17.0" },
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ from smartbook.app import create_app
 from smartbook.config import load_settings
 from test_importers import make_pdf
 
-LONG = "\n\n".join(f"Paragraph {i}. The witcher rode on through the rain towards the town gates." for i in range(400))
+LONG = "\n\n".join(f"Paragraph {i}. The detective walked on through the rain towards the station gates." for i in range(400))
 
 
 def test_add_book_reports_indexing_progress(client, books, services):

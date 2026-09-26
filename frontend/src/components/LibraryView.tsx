@@ -70,7 +70,7 @@ export function LibraryView({ books, painting, openSeries, onOpenSeries, onOpen,
   const canArrange = !q && !genre
   const shelf = useSortable(shown, (b) => b.id, (ordered) => { setSort('custom'); onReorderLibrary(ordered) }, canArrange)
 
-  // a search shows matching series first ("witcher" → The Witcher); without a search every series gets a card
+  // a search shows matching series first ("holmes" → Sherlock Holmes); without a search every series gets a card
   const shownSeries = genre ? [] : series.filter((s) => !q || s.name.toLowerCase().includes(q) ||
     s.books.some((b) => b.author.toLowerCase().includes(q)))
 

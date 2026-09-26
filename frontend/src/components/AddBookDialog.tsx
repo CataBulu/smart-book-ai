@@ -120,7 +120,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
   const back = () => { setMode('choose'); setStaged([]); setError(null) }
   const seriesReady = () => {
     if (sForm.series.trim()) return true
-    setError('Name the series first, e.g. The Witcher.')
+    setError('Name the series first, e.g. Sherlock Holmes.')
     document.getElementById('s-series')?.focus()
     return false
   }
@@ -269,7 +269,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
             <p className="muted">Check the titles and authors, drag them into reading order, then add them all.</p>
             <div className="two series-fields">
               <div className="field"><label htmlFor="b-series">Series <span className="muted">(optional)</span></label>
-                <input id="b-series" list="series-names" value={bulk.series} placeholder="e.g. The Witcher"
+                <input id="b-series" list="series-names" value={bulk.series} placeholder="e.g. Sherlock Holmes"
                        onChange={(e) => setBulk({ ...bulk, series: e.target.value, numbered: bulk.numbered || !bulk.series })} />
                 <datalist id="series-names">{seriesNames.map((s) => <option key={s} value={s} />)}</datalist></div>
               <div className="field"><label htmlFor="b-start">Number them from</label>
@@ -328,11 +328,11 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
             <button className="link back-link" onClick={back} disabled={!!busy}><ArrowLeft size={14} /> Back</button>
             <div className="two">
               <div className="field"><label htmlFor="s-series">Series name</label>
-                <input id="s-series" list="series-names" value={sForm.series} placeholder="e.g. The Witcher"
+                <input id="s-series" list="series-names" value={sForm.series} placeholder="e.g. Sherlock Holmes"
                        onChange={(e) => pickSeries(e.target.value)} />
                 <datalist id="series-names">{seriesNames.map((n) => <option key={n} value={n} />)}</datalist></div>
               <div className="field"><label htmlFor="s-author">Author</label>
-                <input id="s-author" value={sForm.author} placeholder="e.g. Andrzej Sapkowski"
+                <input id="s-author" value={sForm.author} placeholder="e.g. Arthur Conan Doyle"
                        onChange={(e) => setSForm({ ...sForm, author: e.target.value })} />
                 <small>Leave empty to use the author inside each file.</small></div>
             </div>
@@ -345,7 +345,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
                 <summary>No files yet? Type the titles instead</summary>
                 <div className="field">
                   <textarea aria-label="Titles, one per line" rows={5} value={sForm.titles}
-                            placeholder={'The Last Wish\nSword of Destiny\nBlood of Elves'}
+                            placeholder={'A Study in Scarlet\nThe Sign of the Four\nThe Hound of the Baskervilles'}
                             onChange={(e) => setSForm({ ...sForm, titles: e.target.value })} />
                   <small>Each title becomes an entry you can open later to add its text.</small>
                 </div>
@@ -388,7 +388,7 @@ export function AddBookDialog({ track, preset, seriesNames, nextNumber, onClose,
                 </div>
                 <div className="two series-fields">
                   <div className="field"><label htmlFor="f-series">Series <span className="muted">(optional)</span></label>
-                    <input id="f-series" list="series-names" value={form.series} onChange={set('series')} placeholder="e.g. The Witcher" />
+                    <input id="f-series" list="series-names" value={form.series} onChange={set('series')} placeholder="e.g. Sherlock Holmes" />
                     <datalist id="series-names">{seriesNames.map((s) => <option key={s} value={s} />)}</datalist></div>
                   <div className="field"><label htmlFor="f-number">Number in series</label>
                     <input id="f-number" inputMode="decimal" value={form.number} onChange={set('number')} placeholder="1" /></div>

@@ -84,7 +84,7 @@ export function EditBookDialog({ book, seriesNames, track, onClose, onSaved }: P
           </div>
           <div className="two series-fields">
             <div className="field"><label htmlFor="e-series">Series</label>
-              <input id="e-series" list="series-names" value={form.series} onChange={set('series')} placeholder="e.g. The Witcher" />
+              <input id="e-series" list="series-names" value={form.series} onChange={set('series')} placeholder="e.g. Sherlock Holmes" />
               <datalist id="series-names">{seriesNames.map((s) => <option key={s} value={s} />)}</datalist></div>
             <div className="field"><label htmlFor="e-number">Number in series</label>
               <input id="e-number" inputMode="decimal" value={form.number} onChange={set('number')} placeholder="1" /></div>

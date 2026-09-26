@@ -7,20 +7,14 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "accelerate>=1.15.0",
     "chromadb>=1.5.9",
-    "diffusers>=0.40.0",
-    "faster-whisper>=1.2.1",
     "httpx>=0.28.1",
-    "kokoro-onnx>=0.6.1",
     "pillow>=12.3.0",
     "psutil>=7.2.2",
     "pypdf>=6.19.0",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.32",
     "starlette>=1.7.0",
-    "torch>=2.14.0",
-    "transformers>=5.17.0",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -40,6 +34,19 @@ dev = [
     "httpx2>=2.13.1",
     "pytest>=9.1.1",
 ]
+# Local image generation (SD-Turbo) and voice (Kokoro, Whisper). Installed by default; CI skips them because the
+# tests run on fakes, and the app hides these features when they're missing.
+media = [
+    "accelerate>=1.15.0",
+    "diffusers>=0.40.0",
+    "faster-whisper>=1.2.1",
+    "kokoro-onnx>=0.6.1",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "media"]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }

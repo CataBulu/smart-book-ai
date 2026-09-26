@@ -1,5 +1,6 @@
 # <img src="frontend/public/favicon.svg" width="38" alt=""> Smart Book AI
 
+[![CI](https://img.shields.io/github/actions/workflow/status/CataBulu/smart-book-ai/ci.yml?branch=main&label=CI&logo=github)](https://github.com/CataBulu/smart-book-ai/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Starlette](https://img.shields.io/badge/Starlette-ASGI%20%C2%B7%20SSE-009485)](https://www.starlette.io/)
 [![Ollama](https://img.shields.io/badge/Ollama-Qwen%203.5-000000?logo=ollama&logoColor=white)](https://ollama.com/)
@@ -11,6 +12,7 @@
 [![Vite 8](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
 [![Tests](https://img.shields.io/badge/tests-111%20pytest%20%C2%B7%2023%20Playwright-2EA44F?logo=pytest&logoColor=white)](#tests)
 [![Runs locally](https://img.shields.io/badge/runs-100%25%20on%20your%20PC-13345F)](#design-decisions)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **A local AI librarian that recommends English books from your own library.** Describe a mood,
 a theme or a book you loved, and Smart Book AI searches your shelves and answers with books
@@ -49,8 +51,10 @@ painting and voice all run locally, with no API keys, and no book or message lea
   works at any point, keeping nothing half-indexed.
 - **A reader in the app.** Two-page spread with a 3D page turn and adjustable text size, and it
   reopens exactly where you stopped. Seven public-domain classics ship with their full text.
-- **Series and shelves.** Group books into series with % read per book, and drag books into your
-  own order, with animated reordering and keyboard shortcuts.
+- **Collections.** Group books into series, such as the four Sherlock Holmes novels, and see
+  how much of each book and of the whole series you've read. Add a whole series in one go, and
+  drag books into reading order, or your shelves into your own order, with animated reordering
+  and keyboard shortcuts.
 - **Local generative media.** SD-Turbo paints covers and scene illustrations on the GPU in about
   3.5 s. You can also upload your own cover. Answers can be read aloud with Kokoro TTS, and
   questions dictated with Whisper STT.
@@ -59,17 +63,17 @@ painting and voice all run locally, with no API keys, and no book or message lea
 
 ## Screenshots
 
-| Grounded answers, follow-up rewriting and the Details panel | Your library |
+| Grounded answers, follow-up rewriting and the Details panel | Your library, with two collections |
 |---|---|
-| ![Answer with book cards; Details shows the rewritten query, tool call, match scores, tokens and cost](docs/screenshots/chat.jpg) | ![Library with search, genre filters, a series and the cover grid](docs/screenshots/library.jpg) |
+| ![Answer with book cards; Details shows the rewritten query, tool call, match scores, tokens and cost](docs/screenshots/chat.jpg) | ![Library with search, genre filters, two series and the cover grid](docs/screenshots/library.jpg) |
 
-| Reader with a 3D page turn (night) | Book details |
+| A collection: the Sherlock Holmes novels | Reader with a 3D page turn (night) |
 |---|---|
-| ![Two-page reader mid page-turn in night mode](docs/screenshots/reader.jpg) | ![Book drawer with painted cover, tags and actions](docs/screenshots/book-drawer.jpg) |
+| ![Series page with reading order and % read per book](docs/screenshots/series.jpg) | ![Two-page reader mid page-turn in night mode](docs/screenshots/reader.jpg) |
 
-| Night mode: library | Night mode: home |
+| Book details | Night mode |
 |---|---|
-| ![Library in night mode](docs/screenshots/library-dark.jpg) | ![Home screen in night mode](docs/screenshots/home-dark.jpg) |
+| ![Book drawer with painted cover, tags and actions](docs/screenshots/book-drawer.jpg) | ![Library in night mode](docs/screenshots/library-dark.jpg) |
 
 | Settings and hardware panel | Phone layout |
 |---|---|
@@ -85,7 +89,7 @@ painting and voice all run locally, with no API keys, and no book or message lea
 | Retrieval and storage | ChromaDB (persistent, cosine), SQLite (books, conversations, usage, reading progress) |
 | Media | PyTorch (CUDA) + diffusers (SD-Turbo), kokoro-onnx (TTS), faster-whisper (STT), Pillow |
 | Import | pypdf, python-docx, EPUB via zipfile + HTMLParser, Markdown/JSON parsers |
-| Quality | pytest (111 tests, fake LLM), Playwright (23 browser tests), oxlint, TypeScript type-check |
+| Quality | pytest (111 tests, fake LLM), Playwright (23 browser tests), oxlint, TypeScript type-check, GitHub Actions CI |
 
 ## Architecture
 
@@ -168,6 +172,10 @@ ollama pull qwen3-embedding:0.6b
 uv run --project backend python -m smartbook.media download
 ```
 
+uv installs the image and voice libraries (the `media` dependency group, with CUDA PyTorch) by
+default. For a lean install without cover painting and voice, use
+`uv sync --project backend --no-group media`. The app then hides those features.
+
 ### 3. Frontend packages
 
 ```bash
@@ -244,6 +252,12 @@ They cover:
 - day and night mode, confirmations before deleting, editing details
 - your own shelf order, uploading a cover, and the page count
 
+[GitHub Actions](.github/workflows/ci.yml) runs everything on every push:
+- the backend suite on Python 3.12 and 3.13. The multi-GB `media` group is skipped, because the
+  tests run on fakes.
+- the frontend lint, type-check and production build
+- the Playwright suite in Chromium, against a fake-LLM backend, with traces uploaded if a test fails
+
 ## API
 
 | Method | Path | Purpose |
@@ -308,7 +322,9 @@ frontend/
   e2e/              Playwright tests
 docs/screenshots/
 chunks/             Project notes: brief, hardware and models, design system, architecture, API, progress log
+.github/workflows/  CI pipeline
 start.sh            Starts Ollama, the API and the UI for development
+LICENSE             MIT
 ```
 
 ## Limitations
@@ -324,6 +340,11 @@ start.sh            Starts Ollama, the API and the UI for development
   "about N pages".
 - **Built and tested on Windows 11.** The Python and web code is cross-platform, but the GPU paths
   were only measured on one machine.
+
+## License
+
+Released under the [MIT License](LICENSE). The seven bundled classics are public-domain texts from
+[Project Gutenberg](https://www.gutenberg.org/).
 
 ---
 

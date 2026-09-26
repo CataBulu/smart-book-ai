@@ -354,7 +354,7 @@ test('series dialog: choose files before naming the series; the name is asked fo
   await page.getByRole('button', { name: /click to choose/ }).click() // no series name yet
   await (await chooser).setFiles({ name: 'Tide 1.txt', mimeType: 'text/plain', buffer: Buffer.from('The tide came in. '.repeat(40)) })
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  await expect(page.getByText('Name the series first, e.g. The Witcher.')).toBeVisible()
+  await expect(page.getByText('Name the series first, e.g. Sherlock Holmes.')).toBeVisible()
   await expect(page.getByLabel('Series name')).toBeFocused()
 })
 
