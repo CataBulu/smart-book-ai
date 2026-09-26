@@ -21,7 +21,7 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0 # this action publishes full version tags only
         with:
           python-version: ${{ matrix.python }}
           enable-cache: true
@@ -55,7 +55,7 @@ jobs:
       UV_NO_SYNC: "1" # the test server starts with `uv run`; keep it on the lean environment synced below
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0 # this action publishes full version tags only
         with:
           python-version: "3.12"
           enable-cache: true
