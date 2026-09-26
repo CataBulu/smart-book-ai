@@ -29,7 +29,7 @@ class OllamaClient:
         self.embed_model = embed_model
         self.num_ctx = num_ctx
         # On a 4 GB GPU the embedder steals VRAM from the chat model; on CPU it is still ~60 ms per query
-        # and chat prompt evaluation gets ~6x faster (measured, chunks/02).
+        # and chat prompt evaluation gets ~6x faster (measured on a GTX 1650 SUPER).
         self.embed_options = {"num_ctx": 2048, **({"num_gpu": 0} if embed_on_cpu else {})}
         self.http = httpx.AsyncClient(base_url=base_url, timeout=httpx.Timeout(600.0, connect=5.0))
 
@@ -139,7 +139,7 @@ def _tokens(text: str) -> list[str]:
 class FakeLLM:
     """Deterministic stand-in: hashed bag-of-words embeddings and template answers built from the prompt.
 
-    ponytail: no real language understanding — it only exists so tests and Playwright run without Ollama.
+    Deliberately simple: no real language understanding — it only exists so tests and Playwright run without Ollama.
     """
 
     name = "fake"

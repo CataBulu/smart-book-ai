@@ -125,8 +125,6 @@ flowchart LR
   - `qwen3.5:4b` is the default: about 48% of it sits on the GPU and it answers at ~10 tokens/s.
   - `qwen3.5:2b` fits entirely on the GPU (~78 tokens/s) and powers Fast mode.
   - `qwen3.5:9b` was rejected, because at 6.6 GB it would run mostly on the CPU.
-
-  All measurements are in [`chunks/02-hardware-and-models.md`](chunks/02-hardware-and-models.md).
 - **Query embeddings stay off the GPU.** A query embeds on the CPU in about 60 ms, which leaves
   the VRAM to the chat model. Whole-book indexing switches the embedder to the GPU and asks
   Ollama to unload the chat model first.
@@ -321,7 +319,6 @@ frontend/
     index.css       Design tokens and components; reader.css for the reader
   e2e/              Playwright tests
 docs/screenshots/
-chunks/             Project notes: brief, hardware and models, design system, architecture, API, progress log
 .github/workflows/  CI pipeline
 start.sh            Starts Ollama, the API and the UI for development
 LICENSE             MIT
