@@ -11,7 +11,7 @@ from .config import Settings
 from .db import Store
 from .library import Hit, Library
 from .llm import ChatResult, LLMError
-from .moderation import SemanticModerator, Verdict, check_rules
+from .moderation import SemanticModerator, Verdict, check_language, check_rules
 from .rewrite import build_prompt, clean, needs_rewrite
 
 Event = tuple[str, dict]
@@ -160,6 +160,8 @@ class ChatService:
             vector, tokens = await self.library.embed_query(message)
             cost = self._record(session_id, cid, self.s.embed_model, "embed_query", tokens, 0)
             verdict, _ = await self.moderator.check(vector)
+            if verdict.allowed:  # L3 last, so a crisis or injection reply always wins over "mind your language"
+                verdict = check_language(message)
             if not verdict.allowed:
                 for event in self._blocked(session_id, cid, message, verdict):
                     yield event

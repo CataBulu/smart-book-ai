@@ -47,6 +47,14 @@ test('moderation blocks prompt injection before any model call', async ({ page }
   await expect(page.getByTestId('blocked-count')).not.toHaveText('0')
 })
 
+test('offensive language is blocked politely, while book topics still get answers', async ({ page }) => {
+  await ask(page, 'recommend a fucking good thriller')
+  await expect(page.getByTestId('blocked-message')).toContainText('it contained offensive language')
+  await ask(page, 'Is Lolita worth reading?')
+  await expect(page.getByTestId('blocked-message')).toHaveCount(1) // only the first message was blocked
+  await expect(lastAnswer(page)).not.toContainText("I didn't send this to the model")
+})
+
 test('library: add by hand, import Markdown, search', async ({ page }) => {
   const start = await bookCount(page)
   await page.getByRole('button', { name: /^Library/ }).click()

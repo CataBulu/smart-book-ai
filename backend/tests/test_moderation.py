@@ -1,10 +1,12 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 
 from smartbook.llm import FakeLLM
 from smartbook.library import as_query
-from smartbook.moderation import SemanticModerator, check_rules
+from smartbook import moderation
+from smartbook.moderation import BOOK_TOPIC_WORDS, SemanticModerator, check_language, check_rules
 
 
 @pytest.mark.parametrize("text, layer, category", [
@@ -61,3 +63,43 @@ def test_semantic_layer_blocks_close_paraphrase_and_allows_book_requests():
     assert score >= 0.8
     allowed, score = asyncio.run(check("cozy mystery novels set in a village"))
     assert allowed.allowed and score < 0.8
+
+
+@pytest.mark.parametrize("text", [
+    "recommend a fucking good thriller",
+    "this app is shit",
+    "what a bitch of a day",
+    "assholes everywhere",
+    "any books, you twats?",
+    "\U0001f595",
+])
+def test_language_filter_blocks_swearing_and_slurs(text):
+    verdict = check_language(text)
+    assert (verdict.allowed, verdict.layer, verdict.category) == (False, "L3", "offensive_language")
+    assert "ask again" in verdict.message
+
+
+@pytest.mark.parametrize("text", [
+    "A novel about surviving sexual abuse",
+    "Is Lolita by Nabokov worth reading?",
+    "Something like Moby-Dick",
+    "Books by Philip K. Dick",
+    "Of Human Bondage by Somerset Maugham",
+    "The Vagina Monologues",
+    "Bastard Out of Carolina",
+    "Histories of the white power movement",
+    "A classic about class, assassins and Essex",
+    "Scunthorpe United",
+])
+def test_language_filter_allows_book_topics_and_innocent_words(text):
+    assert check_language(text).allowed
+
+
+def test_book_topic_words_are_real_list_entries():
+    listed = set((Path(moderation.__file__).with_name("data") / "bad-words-en.txt").read_text(encoding="utf-8").splitlines())
+    assert BOOK_TOPIC_WORDS <= listed  # a typo here would silently filter the word it meant to allow
+
+
+def test_swearing_does_not_hide_a_crisis():
+    verdict = check_rules("I want to fucking kill myself", 2000)
+    assert verdict.category == "self_harm" and "988" in verdict.message

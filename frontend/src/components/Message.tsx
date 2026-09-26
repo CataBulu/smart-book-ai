@@ -20,6 +20,7 @@ const WHY: Record<string, string> = {
   self_harm: 'it sounded like you might be going through something hard',
   sexual_minors: 'it asked for content involving minors',
   hate_or_violence: 'it contained hate or a threat of violence',
+  offensive_language: 'it contained offensive language',
   invalid: 'it was empty or unreadable',
   too_long: 'it was too long',
 }

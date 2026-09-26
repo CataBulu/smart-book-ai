@@ -3,6 +3,7 @@
 L0  validation      — empty / too long / control characters            (free)
 L1  rules           — regex for injection, dangerous how-tos, self-harm (free)
 L2  semantic        — cosine similarity to embedded harmful exemplars   (one embedding call, reused for retrieval)
+L3  language        — swearing, slurs and explicit words (LDNOOBW list) (free, runs last so crisis replies come first)
 
 Dark *themes* are fine for a librarian ("novels about grief after suicide", "war crime thrillers"); the rules
 target intent — instructions, threats, first-person crisis, jailbreaks — not topics.
@@ -11,6 +12,7 @@ target intent — instructions, threats, first-person crisis, jailbreaks — not
 import math
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from .library import as_query
 
@@ -36,7 +38,29 @@ MESSAGES = {
     "sexual_minors": "I can't help with that request.",
     "hate_or_violence": "I can't help with that. If you'd like, I can recommend books that explore prejudice, "
                         "conflict or violence thoughtfully.",
+    "offensive_language": "Let's keep it friendly. I'm happy to help, so please ask again without the offensive words: "
+                          "tell me a mood, a theme or a book you loved.",
 }
+
+# L3 word list: the English list from LDNOOBW (CC BY 4.0, see data/ATTRIBUTION.md), minus words readers need to talk
+# about real books: themes ("novels about surviving sexual abuse") and titles or names ("Of Human Bondage", "Lolita",
+# "The Vagina Monologues", "Moby-Dick", "Philip K. Dick", "Bastard Out of Carolina").
+BOOK_TOPIC_WORDS = frozenset({
+    "sex", "sexual", "sexuality", "rape", "raping", "rapist", "incest", "erotic", "erotism", "homoerotic", "nude",
+    "nudity", "genitals", "porn", "pornography", "swastika", "white power",
+    "bondage", "lolita", "vagina", "dick", "bastard",
+})
+
+
+def _word_list_pattern(path: Path) -> re.Pattern:
+    """Whole words or phrases only (never inside another word, so "class" or "Scunthorpe" pass), plurals included."""
+    words = [w.strip().lower() for w in path.read_text(encoding="utf-8").splitlines()]
+    words = sorted({w for w in words if w and w not in BOOK_TOPIC_WORDS}, key=len, reverse=True)
+    alternatives = "|".join(re.escape(w).replace(r"\ ", r"\s+") for w in words)
+    return re.compile(rf"(?<!\w)(?:{alternatives})(?:e?s)?(?!\w)", re.I)
+
+
+BAD_WORDS = _word_list_pattern(Path(__file__).with_name("data") / "bad-words-en.txt")
 
 _RULES: list[tuple[str, str]] = [
     ("prompt_injection", r"\b(ignore|disregard|forget)\s+(all\s+|any\s+|the\s+|your\s+)*(previous|prior|above|earlier|"
@@ -98,9 +122,18 @@ def check_rules(text: str, max_chars: int) -> Verdict:
         return Verdict(False, "L0", "invalid", MESSAGES["invalid"])
     if len(text) > max_chars:
         return Verdict(False, "L0", "too_long", MESSAGES["too_long"])
+    # Swearing inside a sentence must not hide what it asks ("I want to f*** kill myself" still gets the crisis reply).
+    plain = " ".join(BAD_WORDS.sub(" ", text).split())
     for category, pattern in RULES:
-        if pattern.search(text):
+        if pattern.search(text) or pattern.search(plain):
             return Verdict(False, "L1", category, MESSAGES[category])
+    return Verdict(True)
+
+
+def check_language(text: str) -> Verdict:
+    """L3, for chat messages only (book descriptions and titles are never filtered). Runs after L1 and L2."""
+    if BAD_WORDS.search(text):
+        return Verdict(False, "L3", "offensive_language", MESSAGES["offensive_language"])
     return Verdict(True)
 
 

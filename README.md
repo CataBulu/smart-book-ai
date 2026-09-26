@@ -10,7 +10,7 @@
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript 6](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite 8](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![Tests](https://img.shields.io/badge/tests-111%20pytest%20%C2%B7%2023%20Playwright-2EA44F?logo=pytest&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-130%20pytest%20%C2%B7%2024%20Playwright-2EA44F?logo=pytest&logoColor=white)](#tests)
 [![Runs locally](https://img.shields.io/badge/runs-100%25%20on%20your%20PC-13345F)](#design-decisions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -39,7 +39,9 @@ painting and voice all run locally, with no API keys, and no book or message lea
 - **Layered moderation before any model call.** L0 input validation, then L1 rules (prompt
   injection, dangerous how-tos, hate, and self-harm answered with crisis resources), then L2
   embedding similarity to harmful examples. L2 reuses the query's retrieval embedding, so
-  moderation adds no extra model call.
+  moderation adds no extra model call. Last comes L3, a language filter built on the
+  [LDNOOBW](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words) word list,
+  which asks politely for a rephrase when a message contains swearing, slurs or explicit words.
 - **Streaming answers with book cards.** Server-sent events report each stage (moderating →
   rewriting → searching → generating) and stream the tokens. Each recommended book gets a card with its
   cover and quick actions.
@@ -89,7 +91,7 @@ painting and voice all run locally, with no API keys, and no book or message lea
 | Retrieval and storage | ChromaDB (persistent, cosine), SQLite (books, conversations, usage, reading progress) |
 | Media | PyTorch (CUDA) + diffusers (SD-Turbo), kokoro-onnx (TTS), faster-whisper (STT), Pillow |
 | Import | pypdf, python-docx, EPUB via zipfile + HTMLParser, Markdown/JSON parsers |
-| Quality | pytest (111 tests, fake LLM), Playwright (23 browser tests), oxlint, TypeScript type-check, GitHub Actions CI |
+| Quality | pytest (130 tests, fake LLM), Playwright (24 browser tests), oxlint, TypeScript type-check, GitHub Actions CI |
 
 ## Architecture
 
@@ -98,7 +100,8 @@ flowchart LR
     UI["React + TypeScript<br/>(Vite)"] -- "POST /api/chat<br/>SSE stream" --> L01["Moderation L0 / L1<br/>validation + rules"]
     L01 --> EMB["Qwen3-Embedding<br/>one query vector"]
     EMB --> L2["Moderation L2<br/>similarity to harmful examples"]
-    L2 --> RW["Follow-up rewrite<br/>(only for follow-ups)"]
+    L2 --> L3["Moderation L3<br/>language filter (word list)"]
+    L3 --> RW["Follow-up rewrite<br/>(only for follow-ups)"]
     RW --> RET["ChromaDB search<br/>relevance threshold"]
     RET --> LLM["Qwen 3.5 chat<br/>streaming + tools"]
     LLM <-->|"search_library<br/>get_book_details"| TOOLS["Tools<br/>ChromaDB + SQLite"]
@@ -129,6 +132,11 @@ flowchart LR
   the VRAM to the chat model. Whole-book indexing switches the embedder to the GPU and asks
   Ollama to unload the chat model first.
 - **One embedding, two jobs.** The same query vector feeds L2 moderation and retrieval.
+- **A word list that knows about books.** The language filter matches whole words only, so "class" or
+  "Scunthorpe" never trip it. It lets through about 20 list words that readers need for real themes
+  and titles, such as *sexual abuse*, *Lolita*, *Of Human Bondage* and *Moby-Dick*. It runs after
+  the safety layers, and those layers ignore swear words, so "I want to f*** kill myself" still gets
+  the crisis reply rather than "mind your language". Book descriptions and titles are never filtered.
 - **Say "no match" instead of inventing one.** The relevance threshold (0.68 cosine distance) was
   calibrated on real queries. The system prompt only allows books from the retrieved context or
   from tool results. When nothing passes, the model is told so and may search again with
@@ -232,18 +240,19 @@ cd frontend && npx playwright test
 cd frontend && npm run lint && npx tsc -b
 ```
 
-**111 backend tests** run against a fake LLM, so they need no Ollama and no GPU. They cover:
-- moderation layers and follow-up rewriting
+**130 backend tests** run against a fake LLM, so they need no Ollama and no GPU. They cover:
+- the moderation layers, including the language filter, and follow-up rewriting
 - chunking, retrieval and the relevance threshold
 - every importer (PDF, DOCX, EPUB, Markdown, JSON), upload limits and import progress
 - the HTTP API, including cancelling jobs and saving the shelf order
 - series and reading progress
 - media endpoints: painted and uploaded covers, speech
 
-**23 Playwright browser tests** start their own isolated backend and UI on ports 8001 and 5174.
+**24 Playwright browser tests** start their own isolated backend and UI on ports 8001 and 5174.
 They cover:
 - grounded answers with book cards, and follow-ups rewritten from the conversation
 - moderation blocking a prompt injection before any model call
+- offensive language blocked politely, while a book topic in the same chat still gets an answer
 - importing books and whole series, with real drag-and-drop ordering and cancelling
 - the reader turning pages and reopening where you left off
 - painting covers and illustrations, listening to answers, dictation
@@ -300,7 +309,7 @@ backend/
     app.py          Starlette routes, SSE, background jobs, static UI
     chat.py         RAG pipeline: moderation → rewrite → retrieve → chat with tools
     library.py      ChromaDB indexing, chunking, embeddings, search
-    moderation.py   L1 rules and L2 semantic moderation
+    moderation.py   L1 rules, L2 semantic moderation, L3 language filter
     rewrite.py      Follow-up detection and standalone-query prompt
     llm.py          Ollama client (chat, tools, embeddings, VRAM control) and a fake LLM for tests
     importers.py    PDF, DOCX, EPUB, Markdown, TXT and JSON import
@@ -308,6 +317,7 @@ backend/
     db.py           SQLite store: books, conversations, usage, reading progress
     config.py       Settings from environment variables
     seed.py, classics.py   Seed library and public-domain full texts
+    data/           LDNOOBW word list (CC BY 4.0) and its attribution
   seed/             60 seed books + 7 classic texts
   tests/            pytest suite
 frontend/
@@ -341,7 +351,10 @@ LICENSE             MIT
 ## License
 
 Released under the [MIT License](LICENSE). The seven bundled classics are public-domain texts from
-[Project Gutenberg](https://www.gutenberg.org/).
+[Project Gutenberg](https://www.gutenberg.org/). The language filter uses the English list from
+[List of Dirty, Naughty, Obscene, and Otherwise Bad Words](https://github.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words),
+© 2012–2020 Shutterstock, Inc., licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+(see [`backend/src/smartbook/data/ATTRIBUTION.md`](backend/src/smartbook/data/ATTRIBUTION.md)).
 
 ---
 
