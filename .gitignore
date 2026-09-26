@@ -34,5 +34,5 @@ backend/.models/
 # graphify dated backups
 graphify-out/20*/
 
-# personal files kept out of the repo
-photos/Signature.png
+# personal files and the design reference screenshots are kept out of the repo
+photos/
