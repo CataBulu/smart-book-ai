@@ -1,0 +1,34 @@
+# docker compose up -d --build  →  http://localhost:8080
+# Uses the Ollama already running on this PC (with qwen3.5:4b, qwen3.5:2b-q4_K_M and qwen3-embedding:0.6b pulled).
+# The library lives in the `smartbook-data` volume and is seeded with 60 books on first start.
+services:
+  smartbook:
+    build: .
+    image: smartbook-ai
+    container_name: smartbook-ai
+    ports:
+      - "8080:8000"
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # lets Linux reach the host's Ollama too (Docker Desktop has it built in)
+    volumes:
+      - smartbook-data:/data
+    restart: unless-stopped
+
+  # Deterministic copy for the Selenium suite: fake LLM, no Ollama needed, data thrown away on removal.
+  # docker compose --profile test up -d smartbook-test  →  http://localhost:8081
+  smartbook-test:
+    image: smartbook-ai
+    container_name: smartbook-ai-test
+    profiles: ["test"]
+    ports:
+      - "8081:8000"
+    environment:
+      SMARTBOOK_FAKE_LLM: "1"
+      SMARTBOOK_RELEVANCE_MAX_DISTANCE: "0.9"
+    tmpfs:
+      - /data:uid=10001
+
+volumes:
+  smartbook-data:

@@ -10,7 +10,9 @@
 [![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript 6](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Vite 8](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
-[![Tests](https://img.shields.io/badge/tests-130%20pytest%20%C2%B7%2024%20Playwright-2EA44F?logo=pytest&logoColor=white)](#tests)
+[![Tests](https://img.shields.io/badge/tests-130%20pytest%20%C2%B7%2024%20Playwright%20%C2%B7%2033%20Selenium-2EA44F?logo=pytest&logoColor=white)](#tests)
+[![Docker](https://img.shields.io/badge/Docker-multi--stage-2496ED?logo=docker&logoColor=white)](Dockerfile)
+[![Selenium](https://img.shields.io/badge/Selenium-Chrome-43B02A?logo=selenium&logoColor=white)](selenium-tests)
 [![Runs locally](https://img.shields.io/badge/runs-100%25%20on%20your%20PC-13345F)](#design-decisions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -91,7 +93,8 @@ painting and voice all run locally, with no API keys, and no book or message lea
 | Retrieval and storage | ChromaDB (persistent, cosine), SQLite (books, conversations, usage, reading progress) |
 | Media | PyTorch (CUDA) + diffusers (SD-Turbo), kokoro-onnx (TTS), faster-whisper (STT), Pillow |
 | Import | pypdf, python-docx, EPUB via zipfile + HTMLParser, Markdown/JSON parsers |
-| Quality | pytest (130 tests, fake LLM), Playwright (24 browser tests), oxlint, TypeScript type-check, GitHub Actions CI |
+| Quality | pytest (130 tests, fake LLM), Playwright (24 browser tests), Selenium (33 UI tests in Chrome), oxlint, TypeScript type-check, GitHub Actions CI |
+| Delivery | Multi-stage Docker image (Node build → Python API serving the UI on one port), Docker Compose |
 
 ## Architecture
 
@@ -211,6 +214,26 @@ and the full text of 7 public-domain classics is attached.
 
 Optional Ollama tuning for small GPUs: `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`.
 
+### Docker
+
+With Ollama running on your machine and the three models pulled (step 1), one command builds the
+image and starts the app:
+
+```bash
+docker compose up -d --build
+```
+
+Then open http://localhost:8080. The container reaches the host's Ollama through
+`host.docker.internal`, keeps its library in the `smartbook-data` volume, and seeds 60 books on
+first start. The image leaves out the `media` group, so cover painting and voice are switched off
+inside Docker. Everything else works the same, including reading, importing and covers you upload.
+
+A second, fully offline copy runs on a fake LLM for the Selenium tests (http://localhost:8081):
+
+```bash
+docker compose --profile test up -d smartbook-test
+```
+
 ## Configuration
 
 Copy `backend/.env.example` to `backend/.env`. The main settings:
@@ -240,6 +263,10 @@ cd frontend && npx playwright test
 cd frontend && npm run lint && npx tsc -b
 ```
 
+```bash
+cd selenium-tests && uv run pytest
+```
+
 **130 backend tests** run against a fake LLM, so they need no Ollama and no GPU. They cover:
 - the moderation layers, including the language filter, and follow-up rewriting
 - chunking, retrieval and the relevance threshold
@@ -259,11 +286,28 @@ They cover:
 - day and night mode, confirmations before deleting, editing details
 - your own shelf order, uploading a cover, and the page count
 
+**33 Selenium tests** drive a real Chrome against the Docker test container, the way a user would.
+Elements are found by their visible names and labels, and native drag and drop is replayed with
+real browser drag events. They cover every screen:
+- home, chat, follow-ups, illustrations, listening and dictation
+- the three moderation outcomes: a blocked injection, a polite language block, and the crisis reply
+- conversations, the usage view and settings
+- the library: adding, importing, searching, genre filters, sorting, your own order (drag, Alt+arrows
+  and buttons) and exporting
+- the book drawer: painting, uploading covers, attaching text, editing, removing
+- series, the reader, and the phone layout
+
+Books that a test adds get a unique suffix, so the suite can run again and again on the same server.
+A failing test leaves a screenshot and the page's HTML in `selenium-tests/artifacts/`. Set
+`SMARTBOOK_URL` to test another server, and `HEADED=1` to watch the browser.
+
 [GitHub Actions](.github/workflows/ci.yml) runs everything on every push:
 - the backend suite on Python 3.12 and 3.13. The multi-GB `media` group is skipped, because the
   tests run on fakes.
 - the frontend lint, type-check and production build
 - the Playwright suite in Chromium, against a fake-LLM backend, with traces uploaded if a test fails
+- a Docker build, followed by a check that the container serves the API and the UI, and then the
+  Selenium suite in Chrome against it, with screenshots and container logs uploaded if anything fails
 
 ## API
 
@@ -328,8 +372,11 @@ frontend/
     api.ts          Typed API client with an SSE reader
     index.css       Design tokens and components; reader.css for the reader
   e2e/              Playwright tests
+selenium-tests/     Selenium UI tests (pytest + Chrome) with their own uv project
 docs/screenshots/
 .github/workflows/  CI pipeline
+Dockerfile          Multi-stage build: Vite bundle + Python API on one port
+docker-compose.yml  The app (port 8080, host Ollama) and a fake-LLM test copy (port 8081)
 start.sh            Starts Ollama, the API and the UI for development
 LICENSE             MIT
 ```

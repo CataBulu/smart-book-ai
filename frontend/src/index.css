@@ -441,7 +441,8 @@ select.select { height: 34px; border-radius: 3px; border: 1px solid var(--line-2
 .bulk { margin: 0 0 12px; padding-left: 18px; max-height: 220px; overflow-y: auto; font-size: 14px; }
 
 /* toast */
-.toasts { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 70; display: grid; gap: 8px; justify-items: center; }
+.toasts { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); z-index: 70; display: grid; gap: 8px; justify-items: center;
+          pointer-events: none; } /* never swallow a click meant for the button underneath */
 .toast { background: var(--ink); color: var(--paper); padding: 10px 16px; border-radius: 4px; font: 13px/1.45 var(--mono); box-shadow: var(--shadow-lg); animation: rise 0.2s ease-out; max-width: 90vw; }
 .toast.error { background: var(--danger); color: #fff; }
 

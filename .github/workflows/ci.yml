@@ -79,3 +79,34 @@ jobs:
           name: playwright-traces
           path: frontend/test-results/
           retention-days: 7
+
+  docker-selenium:
+    name: Docker image and Selenium UI tests
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the image
+        run: docker compose build smartbook
+      - name: Start the test container and check it serves the API and the UI
+        run: |
+          docker compose --profile test up -d smartbook-test
+          for i in $(seq 1 60); do curl -fs http://localhost:8081/api/health | grep -q '"books":60' && break; sleep 1; done
+          curl -fs http://localhost:8081/api/health
+          curl -fs http://localhost:8081/ | grep -q '<title>Smart Book AI</title>'
+      - uses: astral-sh/setup-uv@v10.2.0 # this action publishes full version tags only
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: selenium-tests/uv.lock
+      - name: Selenium UI tests in Chrome
+        run: uv run --locked pytest
+        working-directory: selenium-tests
+      - if: failure()
+        run: docker logs smartbook-ai-test
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: selenium-screenshots
+          path: selenium-tests/artifacts/
+          retention-days: 7

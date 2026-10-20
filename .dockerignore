@@ -1,0 +1,13 @@
+# Allowlist: the image is built from these paths only, so your library data, models, notes and book files
+# can never end up in an image by accident.
+*
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/src/
+!backend/seed/
+!frontend/
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+**/__pycache__

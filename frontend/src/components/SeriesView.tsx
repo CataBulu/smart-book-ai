@@ -47,7 +47,7 @@ export function SeriesView({ series, onBack, onOpenBook, onAdd, onReorder }: Pro
         <div className="lib-head" style={{ marginTop: 10 }}>
           <div>
             <h1>{series.name}</h1>
-            <p>{authors} · {series.books.length} books · {withText} readable · {Math.round(pct)}% of the series read</p>
+            <p>{authors} · {series.books.length} book{series.books.length === 1 ? '' : 's'} · {withText} readable · {Math.round(pct)}% of the series read</p>
           </div>
           <span className="spacer" />
           <button className="btn btn-primary" onClick={onAdd}><Plus size={16} /> Add a book to this series</button>

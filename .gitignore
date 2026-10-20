@@ -34,3 +34,6 @@ graphify-out/
 chunks/
 TODO.md
 *.graphify-bak
+
+# Selenium failure screenshots
+selenium-tests/artifacts/
